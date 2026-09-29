@@ -1,0 +1,61 @@
+name: Extract ProductPulse AI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "*.zip"
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract project ZIP
+        shell: bash
+        run: |
+          set -e
+
+          ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -1)
+
+          if [ -z "$ZIP" ]; then
+            echo "No ZIP file found."
+            exit 1
+          fi
+
+          rm -rf _productpulse_extract
+          mkdir _productpulse_extract
+
+          unzip -q "$ZIP" -d _productpulse_extract
+
+          ROOT=$(find _productpulse_extract -name requirements.txt -type f -print -quit | xargs dirname)
+
+          if [ -z "$ROOT" ]; then
+            echo "Could not find project root."
+            exit 1
+          fi
+
+          cp -a "$ROOT"/. .
+
+          rm -rf _productpulse_extract "$ZIP"
+
+      - name: Commit extracted project
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Extract ProductPulse AI project"
+            git push
+          fi
