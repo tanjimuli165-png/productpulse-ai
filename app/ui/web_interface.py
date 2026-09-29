@@ -290,35 +290,59 @@ def _render_backup_controls(store: ReportStore, product_store: ProductStore, use
 
 
 def render():
-    st.set_page_config(page_title="Opportunity Engine", page_icon="◎", layout="centered")
+    st.set_page_config(page_title="ProductPulse AI", page_icon="◈", layout="wide")
     st.markdown("""
 <style>
-:root { --pp-ink:#102A43; --pp-muted:#617487; --pp-accent:#2B756F; --pp-soft:#EEF7F5; --pp-border:#D9E4E8; }
-.block-container { max-width: 1040px; padding-top: 1.5rem; padding-bottom: 4rem; }
-[data-testid="stAppViewContainer"] { background: linear-gradient(180deg,#F8FBFC 0%,#FFFFFF 34%); }
-[data-testid="stHeader"] { background: rgba(248,251,252,.82); }
-h1 { color:var(--pp-ink); letter-spacing:-.035em; font-weight:800; }
-h2,h3 { color:var(--pp-ink); letter-spacing:-.02em; }
-.stCaption, [data-testid="stCaptionContainer"] { color:var(--pp-muted); }
-div[data-testid="stForm"], div[data-testid="stExpander"], div[data-testid="stMetric"] {
-  border:1px solid var(--pp-border); border-radius:16px; background:rgba(255,255,255,.94);
-  box-shadow:0 6px 24px rgba(16,42,67,.045);
+:root {
+  --pp-ink:#0B1726; --pp-navy:#12263A; --pp-muted:#64748B; --pp-accent:#0F766E;
+  --pp-accent-soft:#E8F5F2; --pp-surface:#FFFFFF; --pp-bg:#F6F8FA; --pp-border:#E2E8F0;
+  --pp-shadow:0 10px 30px rgba(15,23,42,.06);
 }
-div[data-testid="stForm"] { padding:1rem 1rem .25rem; }
-.stButton > button, .stFormSubmitButton > button {
-  border:0; border-radius:11px; min-height:2.65rem; font-weight:700;
-  background:linear-gradient(135deg,#123B5D,#2B756F); color:#fff;
-  box-shadow:0 5px 14px rgba(18,59,93,.16); transition:transform .15s ease, box-shadow .15s ease;
+.block-container { max-width:1180px; padding-top:1.25rem; padding-bottom:5rem; }
+[data-testid="stAppViewContainer"] {
+  background:
+    radial-gradient(circle at 82% 0%, rgba(15,118,110,.07), transparent 28rem),
+    linear-gradient(180deg,#F8FAFC 0%,var(--pp-bg) 42%,#F8FAFC 100%);
 }
-.stButton > button:hover, .stFormSubmitButton > button:hover {
-  transform:translateY(-1px); box-shadow:0 8px 18px rgba(18,59,93,.2);
+[data-testid="stHeader"] { background:rgba(248,250,252,.78); backdrop-filter:blur(12px); }
+[data-testid="stMainBlockContainer"] { max-width:1180px; }
+h1 { color:var(--pp-ink); letter-spacing:-.045em; font-weight:800; line-height:1.05; }
+h2 { color:var(--pp-ink); letter-spacing:-.035em; font-weight:760; }
+h3 { color:var(--pp-navy); letter-spacing:-.02em; font-weight:720; }
+.stCaption,[data-testid="stCaptionContainer"] { color:var(--pp-muted); }
+div[data-testid="stForm"],div[data-testid="stExpander"],div[data-testid="stMetric"] {
+  border:1px solid rgba(226,232,240,.95); border-radius:18px; background:rgba(255,255,255,.92);
+  box-shadow:var(--pp-shadow); overflow:hidden;
 }
-div[data-baseweb="input"] > div, div[data-baseweb="textarea"] > div, div[data-baseweb="select"] > div {
-  border-radius:11px; border-color:var(--pp-border);
+div[data-testid="stForm"] { padding:1.25rem 1.25rem .35rem; }
+div[data-testid="stExpander"] summary { font-weight:650; }
+[data-testid="stMetric"] { padding:1rem 1.1rem; }
+[data-testid="stMetricLabel"] { color:var(--pp-muted); font-size:.78rem; font-weight:650; }
+[data-testid="stMetricValue"] { color:var(--pp-ink); font-weight:780; letter-spacing:-.03em; }
+.stButton > button,.stFormSubmitButton > button {
+  border:1px solid rgba(15,118,110,.12); border-radius:12px; min-height:2.75rem; font-weight:700;
+  background:linear-gradient(135deg,#12304A,#0F766E); color:#fff;
+  box-shadow:0 7px 18px rgba(15,118,110,.16); transition:transform .16s ease,box-shadow .16s ease;
 }
-[data-testid="stMetricValue"] { color:var(--pp-ink); }
-[data-testid="stSidebar"] { background:#F4F8F9; border-right:1px solid var(--pp-border); }
-hr { border-color:var(--pp-border); }
+.stButton > button:hover,.stFormSubmitButton > button:hover {
+  transform:translateY(-1px); box-shadow:0 11px 24px rgba(15,118,110,.22);
+}
+button[kind="secondary"] { background:#fff !important; color:var(--pp-navy) !important; border:1px solid var(--pp-border) !important; box-shadow:none !important; }
+div[data-baseweb="input"] > div,div[data-baseweb="textarea"] > div,div[data-baseweb="select"] > div {
+  border-radius:12px; border-color:var(--pp-border); background:#fff;
+}
+div[data-baseweb="input"] > div:focus-within,div[data-baseweb="textarea"] > div:focus-within,div[data-baseweb="select"] > div:focus-within {
+  border-color:rgba(15,118,110,.65); box-shadow:0 0 0 3px rgba(15,118,110,.09);
+}
+[data-testid="stSidebar"] {
+  background:linear-gradient(180deg,#F8FAFC 0%,#F1F5F9 100%); border-right:1px solid var(--pp-border);
+}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:#475569; }
+[data-testid="stSidebar"] .stButton > button { width:100%; }
+hr { border-color:var(--pp-border); margin:1.5rem 0; }
+[data-testid="stDataFrame"] { border-radius:14px; overflow:hidden; border:1px solid var(--pp-border); }
+[data-testid="stAlert"] { border-radius:14px; }
+div[data-testid="stFileUploader"] { border-radius:14px; }
 </style>
 """, unsafe_allow_html=True)
     st.title("Global Digital Product Opportunity Engine")
