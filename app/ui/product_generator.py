@@ -747,18 +747,18 @@ def _render_pdf_export(product_store: ProductStore, user_id: str, product_id: st
     if export.qa_history_unavailable:
         st.warning("The latest private QA history could not be read for this export. The final PDF is locked until the saved QA history is verified and Final verification passes.")
     elif export.latest_qa_status is None:
-        st.warning("No saved Phase 7 QA run is available. Export is still available, but the content and preview have not been checked by that workflow.")
+        st.warning("No saved Phase 7 QA run is available. Run Automated QA first, then Final verification; the final download stays locked until both gates pass.")
     elif not export.latest_qa_is_current:
         st.warning(
             f"Latest saved QA status: {export.latest_qa_status}, but its snapshot is stale or does not match the current saved product. "
             "Run automated QA again before relying on that result."
         )
     elif export.latest_qa_status == "PASS":
-        st.success("Latest saved QA result is PASS for the current content/preview snapshot only. It does not validate final PDF pagination or guarantee an error-free product.")
+        st.success("Automated QA PASS for the current snapshot. Next step: run Final verification to inspect the actual exported PDF and unlock the final download.")
     else:
         st.warning(
             f"Latest saved QA result is {export.latest_qa_status} for the current content/preview snapshot. "
-            "Review the findings above. Export remains available after your review."
+            "Review the findings above. Resolve the findings, rerun Automated QA, then run Final verification."
         )
 
     st.caption(
