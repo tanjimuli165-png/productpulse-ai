@@ -177,6 +177,7 @@ def _edit_inputs(inputs: ProductInputs, prefix: str) -> ProductInputs:
                     differentiation=_line_items(differentiation),
                     evidence=values["evidence"],
                     validation_steps=_line_items(validation),
+                    reference_material=values.get("reference_material", ""),
                 )
                 st.session_state[f"{prefix}_current_inputs"] = updated.model_dump(mode="json")
                 st.session_state[f"{prefix}_inputs_applied"] = True
