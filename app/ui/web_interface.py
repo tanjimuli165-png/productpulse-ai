@@ -291,7 +291,36 @@ def _render_backup_controls(store: ReportStore, product_store: ProductStore, use
 
 def render():
     st.set_page_config(page_title="Opportunity Engine", page_icon="◎", layout="centered")
-    st.markdown("<style>.block-container{max-width:900px;padding-top:2rem}.stButton>button{width:100%;border-radius:10px;background:#123B5D;color:white;padding:.7rem}.metric-card{padding:1rem;border:1px solid #d9e3e8;border-radius:12px}</style>", unsafe_allow_html=True)
+    st.markdown("""
+<style>
+:root { --pp-ink:#102A43; --pp-muted:#617487; --pp-accent:#2B756F; --pp-soft:#EEF7F5; --pp-border:#D9E4E8; }
+.block-container { max-width: 1040px; padding-top: 1.5rem; padding-bottom: 4rem; }
+[data-testid="stAppViewContainer"] { background: linear-gradient(180deg,#F8FBFC 0%,#FFFFFF 34%); }
+[data-testid="stHeader"] { background: rgba(248,251,252,.82); }
+h1 { color:var(--pp-ink); letter-spacing:-.035em; font-weight:800; }
+h2,h3 { color:var(--pp-ink); letter-spacing:-.02em; }
+.stCaption, [data-testid="stCaptionContainer"] { color:var(--pp-muted); }
+div[data-testid="stForm"], div[data-testid="stExpander"], div[data-testid="stMetric"] {
+  border:1px solid var(--pp-border); border-radius:16px; background:rgba(255,255,255,.94);
+  box-shadow:0 6px 24px rgba(16,42,67,.045);
+}
+div[data-testid="stForm"] { padding:1rem 1rem .25rem; }
+.stButton > button, .stFormSubmitButton > button {
+  border:0; border-radius:11px; min-height:2.65rem; font-weight:700;
+  background:linear-gradient(135deg,#123B5D,#2B756F); color:#fff;
+  box-shadow:0 5px 14px rgba(18,59,93,.16); transition:transform .15s ease, box-shadow .15s ease;
+}
+.stButton > button:hover, .stFormSubmitButton > button:hover {
+  transform:translateY(-1px); box-shadow:0 8px 18px rgba(18,59,93,.2);
+}
+div[data-baseweb="input"] > div, div[data-baseweb="textarea"] > div, div[data-baseweb="select"] > div {
+  border-radius:11px; border-color:var(--pp-border);
+}
+[data-testid="stMetricValue"] { color:var(--pp-ink); }
+[data-testid="stSidebar"] { background:#F4F8F9; border-right:1px solid var(--pp-border); }
+hr { border-color:var(--pp-border); }
+</style>
+""", unsafe_allow_html=True)
     st.title("Global Digital Product Opportunity Engine")
     st.caption("Turn a niche, topic, or customer problem into a ranked, evidence-backed digital product system scan.")
     try:
