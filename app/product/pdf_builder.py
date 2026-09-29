@@ -5,6 +5,7 @@ from io import BytesIO
 import json
 import math
 import re
+from difflib import SequenceMatcher
 from typing import Any
 from urllib.parse import urlsplit
 import xml.etree.ElementTree as ET
@@ -609,9 +610,25 @@ def _assemble_pdf(
         page_count = len(reader.pages)
         if page_count < 1:
             raise ProductPdfExportError("PDF preflight found no pages in the assembled document.")
-        extracted = "\n".join((page.extract_text() or "") for page in reader.pages)
+        page_texts = [(page.extract_text() or "").replace("\\x00", " ").strip() for page in reader.pages]
+        extracted = "\n".join(page_texts)
         if content.product_title.casefold() not in extracted.casefold():
             raise ProductPdfExportError("PDF preflight could not find the saved product title in extracted document text.")
+        # Catch the most common production PDF defects without pretending this is
+        # a visual renderer: blank pages and accidentally duplicated page content.
+        for index, page_text in enumerate(page_texts, start=1):
+            if not page_text:
+                raise ProductPdfExportError(f"PDF preflight found an empty page ({index}). Review page breaks or shorten the preceding block.")
+        for index in range(1, len(page_texts)):
+            left = " ".join(page_texts[index - 1].split())
+            right = " ".join(page_texts[index].split())
+            if len(left) >= 180 and len(right) >= 180:
+                similarity = SequenceMatcher(None, left, right).ratio()
+                if similarity >= 0.94:
+                    raise ProductPdfExportError(
+                        f"PDF preflight found near-duplicate consecutive pages ({index} and {index + 1}). "
+                        "Review repeated content or page-break behavior before exporting."
+                    )
     except ProductPdfExportError:
         raise
     except Exception as exc:
@@ -676,12 +693,17 @@ def export_saved_product_pdf(product_id: str, user_id: str, store: ProductStore)
         try:
             qa_runs = store.list_qa_runs(product_id, user_id, limit=1)
         except Exception:
-            # QA history is advisory and must not prevent an otherwise valid private export.
             qa_runs = []
             qa_history_unavailable = True
         latest_qa = qa_runs[0] if qa_runs else None
         latest_qa_status = (latest_qa or {}).get("result_payload", {}).get("status")
         latest_qa_is_current = bool(latest_qa and latest_qa.get("snapshot_fingerprint") == current_fingerprint)
+        if qa_history_unavailable:
+            raise ProductPdfExportError("Final QA history is unavailable. Run QA again before exporting the product PDF.")
+        if latest_qa_status != "PASS" or not latest_qa_is_current:
+            if latest_qa_status != "PASS":
+                raise ProductPdfExportError("Final QA must PASS before PDF export. Run automated QA, fix any flagged issues, save the changes, and run QA again.")
+            raise ProductPdfExportError("The saved QA result is stale for the current product snapshot. Run automated QA again before exporting.")
         pdf_bytes, page_count, visual_count = _assemble_pdf(
             blueprint=blueprint,
             content=content,
@@ -714,7 +736,7 @@ def export_saved_product_pdf(product_id: str, user_id: str, store: ProductStore)
         qa_history_unavailable=qa_history_unavailable,
         limitations=(
             "The structural preflight confirms a readable PDF container, non-empty page count, and title text extraction; it is not a visual page-by-page review.",
-            "Existing Phase 7 QA covers selected content and indicative HTML-preview patterns, not final PDF overflow, typography, page breaks, color, accessibility, or reader-specific rendering.",
+            "Automated QA must pass and match the current snapshot before export; PDF preflight additionally checks for empty and near-duplicate consecutive pages. Visual typography, exact overflow, color, accessibility, and reader-specific rendering still require human review.",
             "The current templates use ReportLab's built-in base fonts; uncommon symbols and writing systems outside their glyph coverage may need font work and manual review.",
             "A passing preflight or saved QA result does not guarantee accuracy, usefulness, safety, demand, sales, commercial success, or an error-free PDF.",
             "Review the downloaded PDF on its intended screen or printer before distribution; re-run content QA after edits.",
