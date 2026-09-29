@@ -293,60 +293,42 @@ def render():
     st.set_page_config(page_title="ProductPulse AI", page_icon="◈", layout="wide")
     st.markdown("""
 <style>
-:root {
-  --pp-ink:#0B1726; --pp-navy:#12263A; --pp-muted:#64748B; --pp-accent:#0F766E;
-  --pp-accent-soft:#E8F5F2; --pp-surface:#FFFFFF; --pp-bg:#F6F8FA; --pp-border:#E2E8F0;
-  --pp-shadow:0 10px 30px rgba(15,23,42,.06);
-}
-.block-container { max-width:1180px; padding-top:1.25rem; padding-bottom:5rem; }
-[data-testid="stAppViewContainer"] {
-  background:
-    radial-gradient(circle at 82% 0%, rgba(15,118,110,.07), transparent 28rem),
-    linear-gradient(180deg,#F8FAFC 0%,var(--pp-bg) 42%,#F8FAFC 100%);
-}
-[data-testid="stHeader"] { background:rgba(248,250,252,.78); backdrop-filter:blur(12px); }
-[data-testid="stMainBlockContainer"] { max-width:1180px; }
-h1 { color:var(--pp-ink); letter-spacing:-.045em; font-weight:800; line-height:1.05; }
-h2 { color:var(--pp-ink); letter-spacing:-.035em; font-weight:760; }
-h3 { color:var(--pp-navy); letter-spacing:-.02em; font-weight:720; }
-.stCaption,[data-testid="stCaptionContainer"] { color:var(--pp-muted); }
-div[data-testid="stForm"],div[data-testid="stExpander"],div[data-testid="stMetric"] {
-  border:1px solid rgba(226,232,240,.95); border-radius:18px; background:rgba(255,255,255,.92);
-  box-shadow:var(--pp-shadow); overflow:hidden;
-}
-div[data-testid="stForm"] { padding:1.25rem 1.25rem .35rem; }
-div[data-testid="stExpander"] summary { font-weight:650; }
-[data-testid="stMetric"] { padding:1rem 1.1rem; }
-[data-testid="stMetricLabel"] { color:var(--pp-muted); font-size:.78rem; font-weight:650; }
-[data-testid="stMetricValue"] { color:var(--pp-ink); font-weight:780; letter-spacing:-.03em; }
-.stButton > button,.stFormSubmitButton > button {
-  border:1px solid rgba(15,118,110,.12); border-radius:12px; min-height:2.75rem; font-weight:700;
-  background:linear-gradient(135deg,#12304A,#0F766E); color:#fff;
-  box-shadow:0 7px 18px rgba(15,118,110,.16); transition:transform .16s ease,box-shadow .16s ease;
-}
-.stButton > button:hover,.stFormSubmitButton > button:hover {
-  transform:translateY(-1px); box-shadow:0 11px 24px rgba(15,118,110,.22);
-}
-button[kind="secondary"] { background:#fff !important; color:var(--pp-navy) !important; border:1px solid var(--pp-border) !important; box-shadow:none !important; }
-div[data-baseweb="input"] > div,div[data-baseweb="textarea"] > div,div[data-baseweb="select"] > div {
-  border-radius:12px; border-color:var(--pp-border); background:#fff;
-}
-div[data-baseweb="input"] > div:focus-within,div[data-baseweb="textarea"] > div:focus-within,div[data-baseweb="select"] > div:focus-within {
-  border-color:rgba(15,118,110,.65); box-shadow:0 0 0 3px rgba(15,118,110,.09);
-}
-[data-testid="stSidebar"] {
-  background:linear-gradient(180deg,#F8FAFC 0%,#F1F5F9 100%); border-right:1px solid var(--pp-border);
-}
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:#475569; }
-[data-testid="stSidebar"] .stButton > button { width:100%; }
-hr { border-color:var(--pp-border); margin:1.5rem 0; }
-[data-testid="stDataFrame"] { border-radius:14px; overflow:hidden; border:1px solid var(--pp-border); }
-[data-testid="stAlert"] { border-radius:14px; }
-div[data-testid="stFileUploader"] { border-radius:14px; }
+:root{--pp-ink:#0B1726;--pp-navy:#12263A;--pp-muted:#64748B;--pp-accent:#0F766E;--pp-bg:#F6F8FA;--pp-border:#E2E8F0;--pp-shadow:0 12px 34px rgba(15,23,42,.07)}
+.block-container{max-width:1180px;padding-top:1rem;padding-bottom:5rem}
+[data-testid="stAppViewContainer"]{background:radial-gradient(circle at 82% 0%,rgba(15,118,110,.09),transparent 30rem),linear-gradient(180deg,#F8FAFC 0%,#F5F7FA 48%,#F8FAFC 100%)}
+[data-testid="stHeader"]{background:rgba(248,250,252,.82);backdrop-filter:blur(14px)}
+h1,h2,h3{color:var(--pp-ink);letter-spacing:-.035em}
+.stCaption,[data-testid="stCaptionContainer"]{color:var(--pp-muted)}
+.pp-brand{display:flex;align-items:center;gap:12px;margin:.25rem 0 1.35rem}
+.pp-logo{width:42px;height:42px;border-radius:13px;background:linear-gradient(135deg,#12304A,#0F766E);display:flex;align-items:center;justify-content:center;color:#fff;font-size:21px;font-weight:800;box-shadow:0 8px 20px rgba(15,118,110,.18)}
+.pp-brand-name{font-size:1.05rem;font-weight:800;letter-spacing:-.02em;color:#0B1726}
+.pp-brand-tag{font-size:.76rem;color:#64748B}
+.pp-hero{padding:1.5rem 1.65rem 1.6rem;margin-bottom:1.25rem;border:1px solid rgba(226,232,240,.9);border-radius:24px;background:linear-gradient(135deg,rgba(255,255,255,.98),rgba(232,245,242,.72));box-shadow:var(--pp-shadow)}
+.pp-kicker{font-size:.72rem;font-weight:800;letter-spacing:.13em;color:#0F766E;margin-bottom:.55rem}
+.pp-hero-title{font-size:clamp(2rem,4vw,3.35rem);font-weight:850;line-height:1.02;letter-spacing:-.055em;color:#0B1726;max-width:850px}
+.pp-hero-sub{margin-top:.8rem;color:#64748B;font-size:1rem;line-height:1.65;max-width:760px}
+div[data-testid="stForm"],div[data-testid="stExpander"],div[data-testid="stMetric"]{border:1px solid rgba(226,232,240,.95);border-radius:18px;background:rgba(255,255,255,.94);box-shadow:var(--pp-shadow);overflow:hidden}
+div[data-testid="stForm"]{padding:1.25rem 1.25rem .35rem}
+div[data-testid="stExpander"] summary{font-weight:650}
+[data-testid="stMetric"]{padding:1rem 1.1rem}
+[data-testid="stMetricLabel"]{color:var(--pp-muted);font-size:.78rem;font-weight:650}
+[data-testid="stMetricValue"]{color:var(--pp-ink);font-weight:780;letter-spacing:-.03em}
+.stButton>button,.stFormSubmitButton>button{border:1px solid rgba(15,118,110,.12);border-radius:12px;min-height:2.75rem;font-weight:700;background:linear-gradient(135deg,#12304A,#0F766E);color:#fff;box-shadow:0 7px 18px rgba(15,118,110,.16);transition:transform .16s ease,box-shadow .16s ease}
+.stButton>button:hover,.stFormSubmitButton>button:hover{transform:translateY(-1px);box-shadow:0 11px 24px rgba(15,118,110,.22)}
+button[kind="secondary"]{background:#fff!important;color:var(--pp-navy)!important;border:1px solid var(--pp-border)!important;box-shadow:none!important}
+div[data-baseweb="input"]>div,div[data-baseweb="textarea"]>div,div[data-baseweb="select"]>div{border-radius:12px;border-color:var(--pp-border);background:#fff}
+div[data-baseweb="input"]>div:focus-within,div[data-baseweb="textarea"]>div:focus-within,div[data-baseweb="select"]>div:focus-within{border-color:rgba(15,118,110,.65);box-shadow:0 0 0 3px rgba(15,118,110,.09)}
+[data-testid="stSidebar"]{background:linear-gradient(180deg,#F8FAFC 0%,#F1F5F9 100%);border-right:1px solid var(--pp-border)}
+[data-testid="stSidebar"] .stButton>button{width:100%}
+hr{border-color:var(--pp-border);margin:1.5rem 0}
+[data-testid="stDataFrame"]{border-radius:14px;overflow:hidden;border:1px solid var(--pp-border)}
+[data-testid="stAlert"]{border-radius:14px}
+div[data-testid="stFileUploader"]{border-radius:14px}
+@media(max-width:700px){.block-container{padding-left:.8rem;padding-right:.8rem}.pp-hero{padding:1.2rem}.pp-hero-title{font-size:2rem}}
 </style>
 """, unsafe_allow_html=True)
-    st.title("Global Digital Product Opportunity Engine")
-    st.caption("Turn a niche, topic, or customer problem into a ranked, evidence-backed digital product system scan.")
+    st.markdown("""<div class="pp-brand"><div class="pp-logo">P</div><div><div class="pp-brand-name">ProductPulse AI</div><div class="pp-brand-tag">Research → Product → Publish</div></div></div>""", unsafe_allow_html=True)
+    st.markdown("""<div class="pp-hero"><div class="pp-kicker">DIGITAL PRODUCT WORKSPACE</div><div class="pp-hero-title">Turn ideas into polished digital products</div><div class="pp-hero-sub">Research opportunities, shape the product, generate content, refine visuals, verify the result, and export with confidence.</div></div>""", unsafe_allow_html=True)
     try:
         store, product_store = _get_stores()
     except (StorageConfigurationError, StorageConnectionError) as exc:
