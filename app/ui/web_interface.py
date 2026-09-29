@@ -1,0 +1,427 @@
+import os
+import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import extra_streamlit_components as stx
+import streamlit as st
+
+from app.analyzers.gap_detector import detect_gaps
+from app.analyzers.spending import analyze_spending
+from app.collectors.reddit import RedditCollector
+from app.collectors.web import WebCollector
+from app.collectors.youtube import YouTubeCollector
+from app.collectors.marketplaces import MarketplaceCollector
+from app.collectors.site_search import InstagramCollector, QuoraCollector
+from app.config import BASE_DIR, MAX_ITEMS_PER_SOURCE, REPORT_DIR
+from app.backup import create_user_backup
+from app.database.backend import StorageConfigurationError, StorageConnectionError, load_storage_config
+from app.database.file_storage import StorageOperationError
+from app.database.db import ReportStore
+from app.database.models import Report
+from app.product.storage import ProductStore
+from app.ui.product_generator import render_product_generator
+from app.evidence_metrics import count_identified_contributors, is_eligible_evidence
+from app.pdf.generator import generate_pdf
+from app.product.architect import architect_opportunities
+from app.product.launch_suite import build_blueprint, build_launch_kit
+from app.processors.cleaner import normalize_evidence
+from app.processors.problem_miner import mine_problems
+from app.processors.objection_framework import build_objection_matrix
+from app.search_utils import normalize_query
+
+
+QUICK_TOPICS = {"Meal Prep": "meal prep", "SaaS Ideas": "SaaS ideas", "Parenting": "parenting"}
+AUTH_COOKIE = "dpe_auth_session"
+
+
+def _set_example(topic: str) -> None:
+    st.session_state["topic_input"] = topic
+
+
+def _restore_cookie_session(store: ReportStore, cookies: stx.CookieManager) -> None:
+    if st.session_state.get("auth_user"):
+        return
+    token = cookies.get(AUTH_COOKIE)
+    if token:
+        user = store.authenticate_session(token)
+        if user:
+            st.session_state["auth_user"] = user
+            st.session_state["session_token"] = token
+
+
+def _render_auth(store: ReportStore, cookies: stx.CookieManager) -> str | None:
+    if st.session_state.get("auth_user"):
+        user = st.session_state["auth_user"]
+        st.sidebar.subheader("Account")
+        st.sidebar.success(f"Signed in as **{user['username']}**")
+        if st.sidebar.button("Log out", key="logout_button"):
+            token = st.session_state.get("session_token", "")
+            store.revoke_session(token)
+            st.session_state.pop("user_backup", None)
+            cookies.delete(AUTH_COOKIE, key="delete_auth_cookie")
+            st.session_state.pop("auth_user", None)
+            st.session_state.pop("session_token", None)
+            st.session_state.pop("report", None)
+            st.session_state.pop("pdf_path", None)
+            st.rerun()
+        return user["user_id"]
+
+    st.subheader("Welcome — sign in to begin")
+    st.caption("Your scans and products are stored in the configured private account storage.")
+    login_tab, register_tab = st.tabs(["Log in", "Register"])
+    with login_tab:
+        with st.form("main_login_form"):
+            username = st.text_input("Username", key="login_username")
+            password = st.text_input("Password", type="password", key="login_password")
+            submitted = st.form_submit_button("Log in")
+        if submitted:
+            user = store.authenticate(username, password)
+            if user:
+                token = store.create_session(user["user_id"], days=30)
+                cookies.set(AUTH_COOKIE, token, key="set_auth_cookie", expires_at=datetime.now(timezone.utc) + timedelta(days=30), max_age=30 * 24 * 60 * 60, path="/", secure=True, same_site="lax")
+                st.session_state["auth_user"] = user
+                st.session_state["session_token"] = token
+                st.rerun()
+            st.error("Invalid username or password.")
+    with register_tab:
+        with st.form("main_register_form"):
+            new_username = st.text_input("New username", key="register_username")
+            new_password = st.text_input("Password (8+ characters)", type="password", key="register_password")
+            confirm_password = st.text_input("Confirm password", type="password", key="register_confirm")
+            registered = st.form_submit_button("Create account")
+        if registered:
+            if new_password != confirm_password:
+                st.error("Passwords do not match.")
+            else:
+                ok, message = store.register_user(new_username, new_password)
+                (st.success if ok else st.error)(message)
+        st.info("Log in or create an account to run scans and access private history.")
+    return None
+
+
+def run_engine(topic: str, sources: list[str], limit: int) -> Report:
+    topic = normalize_query(topic)
+    collectors = {"Reddit": RedditCollector(), "YouTube": YouTubeCollector(), "Web": WebCollector(), "Quora": QuoraCollector(), "Instagram": InstagramCollector()}
+    evidence, notes = [], []
+    with ThreadPoolExecutor(max_workers=len(sources) + 1) as pool:
+        futures = {pool.submit(collectors[s].collect, topic, limit): s for s in sources}
+        marketplace_future = pool.submit(MarketplaceCollector().collect, topic, min(limit, 10))
+        for future in as_completed(futures):
+            source = futures[future]
+            try:
+                evidence.extend(future.result())
+            except Exception as exc:
+                notes.append(f"{source} failed: {exc}")
+        try:
+            marketplace_gaps = marketplace_future.result()
+        except Exception as exc:
+            marketplace_gaps = []
+            notes.append(f"Marketplace collection failed: {exc}")
+    evidence = normalize_evidence(evidence)
+    reportable_evidence = [item for item in evidence if is_eligible_evidence(item)]
+    problems = mine_problems(evidence)
+    objection_matrix = build_objection_matrix(problems)
+    spending = analyze_spending(evidence)
+    gaps = detect_gaps(evidence)
+    opportunities = architect_opportunities(topic, problems, spending, gaps, len(reportable_evidence))
+    top_opportunity = opportunities[0] if opportunities else None
+    top_problem = problems[0] if problems else None
+    product_blueprint = build_blueprint(topic, top_opportunity, top_problem) if top_opportunity else {}
+    launch_kit = build_launch_kit(topic, top_opportunity, top_problem, marketplace_gaps) if top_opportunity else {}
+    best = opportunities[0].validation_score if opportunities else 0
+    contributors = count_identified_contributors(reportable_evidence)
+    contributor_note = f" The records exposed {contributors} distinct source-local author/channel account identifiers or names; this is not necessarily a count of unique people." if contributors is not None else " Author/channel identities were not available in the eligible records."
+    summary = (f"The scan found {len(reportable_evidence)} eligible normalized evidence records and {len(problems)} extracted problem-language groups across {', '.join(sources)}. "
+               f"The highest heuristic priority score was {best}/100. Groups are text patterns, not unique people or proof of recurrence.{contributor_note} "
+               "Scores are ranking heuristics, not validated demand or willingness to pay; interviews, a paid pilot, or a pre-sale are needed to test those outcomes.")
+    sales_hooks = [opportunity.value_hook for opportunity in opportunities if opportunity.value_hook]
+    return Report(id=uuid.uuid4().hex, topic=topic, evidence=evidence, problems=problems, opportunities=opportunities, objection_matrix=objection_matrix, sales_hooks=sales_hooks, marketplace_gaps=marketplace_gaps, gap_analysis=gaps, product_blueprint=product_blueprint, launch_kit=launch_kit, executive_summary=summary, scoring_version="evidence_proxy_v2", collection_notes=notes + [spending["interpretation"], gaps["assessment"], "The composite priority score is a heuristic, not an outcome-validated demand score or probability."])
+
+
+def _render_source_links(report: Report) -> None:
+    evidence = [item for item in report.evidence if is_eligible_evidence(item)]
+    sources = sorted({item.source for item in evidence})
+    for source in sources:
+        with st.expander(f"{source} source links ({sum(item.source == source for item in evidence)} evidence records)"):
+            for item in [item for item in evidence if item.source == source]:
+                label = item.title or item.url or "Open source"
+                st.markdown(f"- [{label}]({item.url})" if item.url else f"- {label}")
+
+
+def _load_history_report(report: Report) -> None:
+    pdf_path = REPORT_DIR / f"opportunity-report-{report.id}.pdf"
+    if not pdf_path.exists():
+        generate_pdf(report, pdf_path)
+    st.session_state["report"] = report
+    st.session_state["pdf_path"] = str(pdf_path)
+
+
+def _render_history(store: ReportStore, user_id: str) -> None:
+    st.sidebar.subheader("Past Opportunity Scans")
+    history = store.recent(user_id=user_id, limit=12)
+    if not history:
+        st.sidebar.caption("Your completed scans will appear here.")
+        return
+    for saved_report in history:
+        timestamp = saved_report.created_at.strftime("%Y-%m-%d %H:%M")
+        label = saved_report.topic[:42] + ("…" if len(saved_report.topic) > 42 else "")
+        if st.sidebar.button(label, key=f"history_{saved_report.id}", help=f"Load scan from {timestamp}"):
+            _load_history_report(saved_report)
+        st.sidebar.caption(f"{timestamp} · {len(saved_report.problems)} problem-language groups")
+
+
+@st.cache_resource(show_spinner=False)
+def _get_stores() -> tuple[ReportStore, ProductStore]:
+    """One store pair per server process, so cloud schema/RLS setup never runs on each rerun."""
+    return ReportStore(), ProductStore()
+
+
+def _render_backup_controls(store: ReportStore, product_store: ProductStore, user_id: str) -> None:
+    """Build the private ZIP only on request: it reads all of the account's data and visual files."""
+    if st.sidebar.button(
+        "Prepare private backup (.zip)",
+        key="prepare_user_backup",
+        help="Builds an archive with app source and only your reports, product versions, QA history, and private visuals. It excludes the shared database, credentials, sessions, and other accounts.",
+    ):
+        try:
+            with st.spinner("Building your private backup…"):
+                st.session_state["user_backup"] = {
+                    "user_id": user_id,
+                    "data": create_user_backup(BASE_DIR, store, user_id, product_store),
+                }
+        except StorageOperationError:
+            st.session_state.pop("user_backup", None)
+            st.sidebar.error("Private storage could not be read right now, so no backup was created. Please try again shortly.")
+    backup = st.session_state.get("user_backup")
+    if backup and backup.get("user_id") == user_id:
+        st.sidebar.download_button(
+            "Download your private backup (.zip)",
+            data=backup["data"],
+            file_name="digital-product-engine-my-backup.zip",
+            mime="application/zip",
+            key="user_project_backup",
+        )
+
+
+def render():
+    st.set_page_config(page_title="Opportunity Engine", page_icon="◎", layout="centered")
+    st.markdown("<style>.block-container{max-width:900px;padding-top:2rem}.stButton>button{width:100%;border-radius:10px;background:#123B5D;color:white;padding:.7rem}.metric-card{padding:1rem;border:1px solid #d9e3e8;border-radius:12px}</style>", unsafe_allow_html=True)
+    st.title("Global Digital Product Opportunity Engine")
+    st.caption("Turn a niche, topic, or customer problem into a ranked, evidence-backed digital product system scan.")
+    try:
+        store, product_store = _get_stores()
+    except (StorageConfigurationError, StorageConnectionError) as exc:
+        st.error(f"Storage is not available: {exc}")
+        return
+    cookies = stx.CookieManager(key="auth_cookie_manager")
+    _restore_cookie_session(store, cookies)
+    user_id = _render_auth(store, cookies)
+    if not user_id:
+        st.warning("Please log in to use the opportunity engine.")
+        return
+    _render_history(store, user_id)
+    storage_label = "Supabase Postgres + private Storage" if load_storage_config().backend == "supabase" else "local SQLite + private files"
+    st.sidebar.caption(f"Storage: {storage_label}")
+    _render_backup_controls(store, product_store, user_id)
+
+    builder_state = st.session_state.get("product_builder_state")
+    if builder_state:
+        if st.button("Return to Opportunity Engine", key="return_to_opportunity_engine"):
+            st.session_state.pop("product_builder_state", None)
+            st.rerun()
+        selected_report = store.get(builder_state.get("report_id", ""), user_id=user_id)
+        if selected_report is None:
+            st.error("The selected research report is not available in this account. Return to the Opportunity Engine and choose it again.")
+            return
+        try:
+            render_product_generator(
+                product_store,
+                user_id,
+                selected_report,
+                int(builder_state.get("opportunity_index", -1)),
+                builder_state.get("product_id", ""),
+            )
+        except StorageOperationError:
+            st.error("Private storage is temporarily unavailable, so this product page could not be loaded. Nothing was switched to local storage; please try again shortly.")
+        return
+
+    st.text_input("Niche, topic, or problem statement", placeholder="e.g., onboarding systems for independent consultants", key="topic_input")
+    st.caption("Quick examples")
+    example_cols = st.columns(len(QUICK_TOPICS))
+    for column, (label, value) in zip(example_cols, QUICK_TOPICS.items()):
+        with column:
+            st.button(label, key=f"quick_{label.lower().replace(' ', '_')}", on_click=_set_example, args=(value,))
+
+    with st.form("research_form"):
+        sources = st.multiselect("Public sources", ["Reddit", "YouTube", "Web", "Quora", "Instagram"], default=["Reddit", "YouTube", "Web", "Quora", "Instagram"])
+        limit = st.slider("Maximum items per source", 5, MAX_ITEMS_PER_SOURCE, min(15, MAX_ITEMS_PER_SOURCE))
+        submitted = st.form_submit_button("Run opportunity scan")
+    if submitted:
+        topic = st.session_state.get("topic_input", "").strip()
+        if not topic:
+            st.error("Enter a niche or problem statement first.")
+            return
+        if not sources:
+            st.error("Choose at least one source.")
+            return
+        with st.status("Collecting and analyzing public evidence…", expanded=True) as status:
+            st.write("Fetching problem-focused source results in parallel.")
+            report = run_engine(topic, sources, limit)
+            report.user_id = user_id
+            st.write(f"Normalized {sum(is_eligible_evidence(item) for item in report.evidence)} eligible evidence records.")
+            st.write(f"Extracted {len(report.problems)} problem-language groups (not people or proven recurrence).")
+            status.update(label="Opportunity scan complete", state="complete")
+        store.save(report, user_id=user_id)
+        pdf_path = REPORT_DIR / f"opportunity-report-{report.id}.pdf"
+        generate_pdf(report, pdf_path)
+        st.session_state["report"] = report
+        st.session_state["pdf_path"] = str(pdf_path)
+
+    report = st.session_state.get("report")
+    if report:
+        st.divider()
+        top_score = report.opportunities[0].validation_score if report.opportunities else 0
+        eligible_evidence = [item for item in report.evidence if is_eligible_evidence(item)]
+        contributors = count_identified_contributors(eligible_evidence)
+        metrics = st.columns(4)
+        metrics[0].metric("Evidence Records", len(eligible_evidence), help="Collected source records, not unique customers or necessarily independent sources.")
+        metrics[1].metric("Problem-Language Groups", len(report.problems), help="Extracted wording patterns; not a count of people or proof of recurrence.")
+        metrics[2].metric("Top Heuristic Priority", f"{top_score}/100", help="Ranking heuristic only, not validated demand, a probability, or an outcome-validated score.")
+        metrics[3].metric("Identifiable Author/Channel Accounts", contributors if contributors is not None else "Not available", help="Distinct source-local account IDs or names when exposed; not necessarily distinct people across sources.")
+        st.caption("Scores prioritize hypotheses for review; they do not validate willingness to pay, sales, or recurrence. Source record volume is not proof of independent customer support.")
+        if not report.problems:
+            st.warning("No explicit customer pain points were found for this query. Try a more specific topic or include a customer segment, workflow, or frustration.")
+        st.subheader("Executive summary")
+        st.info(report.executive_summary)
+        st.subheader("Top hypotheses")
+        for opportunity_index, opportunity in enumerate(report.opportunities[:5]):
+            with st.expander(f"{opportunity.name} · {opportunity.validation_score}/100"):
+                st.write(opportunity.promise)
+                st.write(f"**Audience:** {opportunity.audience}")
+                st.write(f"**Formats:** {', '.join(opportunity.format)}")
+                st.write(f"**Illustrative pricing hypothesis (not validated or based on observed sales):** {opportunity.pricing['starter']} starter · {opportunity.pricing['core']} core · {opportunity.pricing['premium']} premium")
+                if report.scoring_version == "evidence_proxy_v2":
+                    st.write(f"**Payment-language proxy (0–0.50; not measured willingness to pay):** {opportunity.willingness_to_pay:.2f}")
+                    st.write(f"**Evidence coverage input (record volume only):** {opportunity.evidence_strength:.2f}")
+                else:
+                    st.write("**Legacy stored price-related score:** not directly comparable to the current capped payment-language proxy.")
+                st.caption("Heuristic priority score—not a demand probability, validated score, or proof of sales.")
+                if opportunity.competition_gap_status == "observed":
+                    gap_label = f"Observed heuristic signal · {opportunity.competition_gap:.2f}"
+                elif opportunity.competition_gap_status == "insufficient_evidence":
+                    gap_label = f"Insufficient evidence (neutral; no gap credit inferred) · {opportunity.competition_gap:.2f}"
+                else:
+                    gap_label = "Not assessed in this older saved report; stored gap score is unverified"
+                st.write(f"**Competition-gap dimension:** {gap_label}")
+                st.write(f"**Value hook:** {opportunity.value_hook}")
+                st.write(f"**Objection bucket:** {opportunity.objection_bucket}")
+                st.write(f"**Pricing rationale:** {opportunity.pricing_rationale}")
+                st.write("**Next steps:** " + "; ".join(opportunity.next_steps))
+                saved_products = product_store.recent_for_opportunity(user_id, report.id, opportunity_index)
+                for saved_product in saved_products:
+                    version = saved_product.get("updated_at", "")[:16].replace("T", " ")
+                    if st.button(
+                        f"Continue saved blueprint · {saved_product['status']} · {version}",
+                        key=f"open_product_{saved_product['product_id']}",
+                    ):
+                        st.session_state["product_builder_state"] = {
+                            "report_id": report.id,
+                            "opportunity_index": opportunity_index,
+                            "product_id": saved_product["product_id"],
+                        }
+                        st.rerun()
+                if st.button("Generate Product", key=f"generate_product_{report.id}_{opportunity_index}", type="primary"):
+                    st.session_state["product_builder_state"] = {
+                        "report_id": report.id,
+                        "opportunity_index": opportunity_index,
+                        "product_id": uuid.uuid4().hex,
+                    }
+                    st.rerun()
+        st.subheader("Problem-language evidence")
+        if report.problems:
+            problem_rows = []
+            for problem in report.problems:
+                problem_rows.append({
+                    "Extracted language pattern": problem.problem,
+                    "Sentence mentions": problem.sentence_mentions if problem.sentence_mentions is not None else problem.frequency,
+                    "Supporting evidence items": problem.evidence_items if problem.evidence_items is not None else "Not recorded in this older report",
+                    "Identified author/channel accounts": problem.unique_contributors if problem.unique_contributors is not None else "Not available / not recorded",
+                })
+            st.dataframe(problem_rows, use_container_width=True, hide_index=True)
+        st.caption("Sentence mentions are occurrences in collected text. Evidence-item counts deduplicate source records within each pattern; author/channel IDs are source-local where available, and do not establish unique people or recurrence over time.")
+
+        st.subheader("Classified problem-language excerpts (heuristic)")
+        matrix_cols = st.columns(3)
+        for column, (bucket, problems) in zip(matrix_cols, report.objection_matrix.items()):
+            with column:
+                st.markdown(f"**{bucket}**")
+                for problem in problems:
+                    st.write(f"- {problem}")
+                if not problems:
+                    st.caption("No explicit signals")
+        st.subheader("Hormozi Sales Hooks")
+        for hook in report.sales_hooks:
+            st.info(hook)
+        st.subheader("Competition-gap evidence")
+        gap_analysis = report.gap_analysis
+        if not gap_analysis:
+            st.info("This saved report predates gap-evidence tracking. Its competition-gap score cannot be verified from a saved audit; run a new scan for evidence-linked themes.")
+        elif gap_analysis.get("status") == "observed" and gap_analysis.get("gaps"):
+            st.caption(gap_analysis.get("assessment", "Matched evidence is heuristic, not proof of unmet demand."))
+            st.dataframe([{"Theme": item["gap"], "Matching evidence items": item.get("evidence_items", item.get("mentions", 0)), "Observed excerpt": item["example"], "Source": item.get("source", ""), "URL": item.get("url", "")} for item in gap_analysis["gaps"]], use_container_width=True, hide_index=True)
+        else:
+            st.info("Insufficient evidence: no recognized competition-gap terms were found. No generic gap examples were added, and the competition-gap score is neutral rather than positive evidence.")
+        st.subheader("Marketplace listing signals")
+        if report.marketplace_gaps:
+            st.dataframe([{"Marketplace": gap.marketplace, "Product": gap.title, "Observed price": gap.price or "Not found", "Format benchmark (estimate)": gap.price_benchmark or "Not available", "Format": gap.format, "Rating": gap.rating, "Gap signal": gap.gap_signal, "URL": gap.url} for gap in report.marketplace_gaps], use_container_width=True, hide_index=True)
+            st.caption("Listing prices come from scraped marketplace text. Format benchmarks are heuristic estimates, not observed prices; listing presence alone is not evidence of a product gap.")
+            with st.expander("Marketplace review insights"):
+                for gap in report.marketplace_gaps:
+                    st.markdown(f"**{gap.marketplace}: {gap.title}**")
+                    for insight in gap.review_insights:
+                        st.write(f"- {insight}")
+        else:
+            st.info("No public Etsy or Gumroad marketplace results were available. The blueprint below is based on customer pain evidence only.")
+        st.subheader("Day-1 Deliverable Blueprint")
+        blueprint = report.product_blueprint
+        if blueprint:
+            st.write(f"**Product:** {blueprint.get('product_name', 'Top opportunity')}")
+            st.write(f"**Promise:** {blueprint.get('one_sentence_promise', '')}")
+            for module in blueprint.get("modules", []):
+                with st.expander(module.get("name", "Module")):
+                    for page in module.get("pages", []):
+                        st.write(f"- {page}")
+            st.write("**Bonuses:** " + "; ".join(blueprint.get("bonuses", [])))
+            st.write("**Build order:** " + " → ".join(blueprint.get("day_one_build_order", [])))
+        else:
+            st.info("A product blueprint will appear when at least one explicit opportunity is found.")
+        st.subheader("Launch & Marketing Kit")
+        kit = report.launch_kit
+        if kit:
+            st.markdown("**Listing description**")
+            st.write(kit.get("listing_description", ""))
+            st.markdown("**SEO tags**")
+            st.write(", ".join(kit.get("seo_tags", [])))
+            st.markdown("**Short-form video hooks**")
+            for hook in kit.get("short_form_hooks", []):
+                st.info(hook)
+            st.markdown("**ROI justification**")
+            st.write(kit.get("roi_justification", ""))
+            if kit.get("marketplace_benchmark_note"):
+                st.caption(kit["marketplace_benchmark_note"])
+        else:
+            st.info("The launch kit will appear when at least one explicit opportunity is found.")
+        st.subheader("Raw source links")
+        _render_source_links(report)
+        with st.expander("Collection notes"):
+            for note in report.collection_notes:
+                st.write(note)
+        st.subheader("Download report")
+        with open(st.session_state["pdf_path"], "rb") as handle:
+            st.download_button("Download styled PDF report", handle, file_name=Path(st.session_state["pdf_path"]).name, mime="application/pdf")
+
+
+if __name__ == "__main__":
+    render()

@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.streamlit/secrets.toml
+.streamlit/config.toml
+data/*.db
+data/*.db-*
+data/raw/*
+data/reports/*
+data/visual_assets/
+visual_assets/
+*.zip

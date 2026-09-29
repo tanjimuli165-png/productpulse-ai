@@ -1,0 +1,236 @@
+from __future__ import annotations
+
+import json
+import os
+from typing import Any
+
+from app.product.product_schema import PRODUCT_TYPES, ProductBlueprint, ProductInputs
+
+
+class BlueprintGenerationError(RuntimeError):
+    """A user-safe error raised when a provider cannot return a valid blueprint."""
+
+
+BLUEPRINT_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "subtitle": {"type": "string"},
+        "target_audience": {"type": "string"},
+        "core_problem": {"type": "string"},
+        "desired_outcome": {"type": "string"},
+        "promise": {"type": "string"},
+        "product_type": {"type": "string", "enum": PRODUCT_TYPES},
+        "recommended_types": {"type": "array", "items": {"type": "string", "enum": PRODUCT_TYPES}, "minItems": 1, "maxItems": 3},
+        "recommendation_reason": {"type": "string"},
+        "outline": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 12,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "purpose": {"type": "string"},
+                    "components": {"type": "array", "items": {"type": "string"}, "maxItems": 12},
+                },
+                "required": ["title", "purpose", "components"],
+                "additionalProperties": False,
+            },
+        },
+        "estimated_page_count": {"type": "integer", "minimum": 3, "maximum": 120},
+        "exercises": {"type": "array", "items": {"type": "string"}, "maxItems": 15},
+        "checklists": {"type": "array", "items": {"type": "string"}, "maxItems": 15},
+        "worksheets": {"type": "array", "items": {"type": "string"}, "maxItems": 15},
+        "examples": {"type": "array", "items": {"type": "string"}, "maxItems": 15},
+        "templates": {"type": "array", "items": {"type": "string"}, "maxItems": 15},
+        "bonuses": {"type": "array", "items": {"type": "string"}, "maxItems": 10},
+        "design_direction": {"type": "string"},
+    },
+    "required": [
+        "title", "subtitle", "target_audience", "core_problem", "desired_outcome", "promise",
+        "product_type", "recommended_types", "recommendation_reason", "outline", "estimated_page_count",
+        "exercises", "checklists", "worksheets", "examples", "templates", "bonuses", "design_direction",
+    ],
+    "additionalProperties": False,
+}
+
+
+SYSTEM_PROMPT = """You are a careful digital-product strategy assistant. Create a concise, practical Product Blueprint from the provided structured opportunity data. Treat the opportunity as an evidence-supported hypothesis worth validating, never as proof of demand or guaranteed sales. Do not invent market statistics, evidence, customer quotes, source details, results, or validation outcomes. Use only the provided audience, problem, promise, format, differentiation, validation steps, and source records. If the evidence is sparse, keep claims modest and clearly preserve the need for validation. Recommend one to three product types only from the allowed list and explain their fit. The requested product_type must remain the user's selected type. Produce an actionable outline before any full content; do not write complete chapters."""
+
+
+PRODUCT_TYPE_PROFILES: dict[str, dict[str, object]] = {
+    "Ebook": {"template": "minimal_professional", "sections": ["Introduction", "Core Concepts", "Practical Examples", "Key Takeaways", "Action Plan"], "blocks": ["paragraph", "example", "action_steps"]},
+    "Playbook": {"template": "modern_business", "sections": ["Quick Start", "Workflow", "Decision Points", "Execution Checklist", "Review"], "blocks": ["steps", "checklist", "table", "action_steps"]},
+    "Workbook": {"template": "clean_workbook", "sections": ["Baseline", "Guided Lessons", "Exercises", "Worksheets", "Review"], "blocks": ["exercise", "worksheet", "reflection"]},
+    "Planner": {"template": "clean_workbook", "sections": ["Goals", "Planning Pages", "Priority Tracker", "Review", "Next Period"], "blocks": ["worksheet", "checklist", "reflection"]},
+    "Checklist": {"template": "minimal_professional", "sections": ["Before You Start", "Main Checklist", "Quality Check", "Common Misses", "Final Sign-off"], "blocks": ["checklist", "steps", "reference"]},
+    "Guide": {"template": "minimal_professional", "sections": ["Start Here", "Step-by-Step Guide", "Examples", "Troubleshooting", "Next Steps"], "blocks": ["paragraph", "steps", "example", "action_steps"]},
+    "Journal": {"template": "clean_workbook", "sections": ["How to Use", "Prompts", "Reflection Pages", "Progress Review", "Next Steps"], "blocks": ["reflection", "worksheet"]},
+    "Tracker": {"template": "clean_workbook", "sections": ["Setup", "Tracking Pages", "Weekly Review", "Progress Summary", "Next Actions"], "blocks": ["table", "worksheet", "reflection"]},
+    "Action Plan": {"template": "modern_business", "sections": ["Outcome", "Milestones", "Action Steps", "Risks", "Review"], "blocks": ["action_steps", "table", "checklist"]},
+    "Challenge": {"template": "modern_business", "sections": ["Challenge Rules", "Day/Week Plan", "Progress Checks", "Troubleshooting", "Completion Review"], "blocks": ["steps", "checklist", "reflection"]},
+    "Template": {"template": "clean_workbook", "sections": ["How to Use", "Template", "Example", "Customization", "Final Checklist"], "blocks": ["worksheet", "example", "checklist"]},
+    "Worksheet": {"template": "clean_workbook", "sections": ["Instructions", "Prompt", "Working Area", "Review", "Next Action"], "blocks": ["worksheet", "reflection", "action_steps"]},
+}
+
+
+def product_type_profile(product_type: str) -> dict[str, object]:
+    if product_type not in PRODUCT_TYPE_PROFILES:
+        raise ValueError("Choose a supported product type.")
+    return dict(PRODUCT_TYPE_PROFILES[product_type])
+
+
+def recommend_product_types(inputs: ProductInputs) -> tuple[list[str], str]:
+    """Transparent format-based starting suggestion; AI can refine it in the blueprint."""
+    hints = " ".join(inputs.format_hints).lower()
+    if any(word in hints for word in ("workbook", "worksheet", "workspace", "exercise", "template")):
+        choices = ["Workbook", "Playbook", "Template"]
+        reason = "The research format points to implementation materials, reusable workspace elements, or guided exercises."
+    elif any(word in hints for word in ("playbook", "step-by-step", "guide", "process")):
+        choices = ["Playbook", "Guide", "Action Plan"]
+        reason = "The research format emphasizes a sequenced process or step-by-step implementation."
+    elif any(word in hints for word in ("planner", "tracker", "journal", "daily")):
+        choices = ["Planner", "Tracker", "Journal"]
+        reason = "The research format emphasizes repeated planning, logging, or reflection."
+    elif any(word in hints for word in ("checklist", "check list")):
+        choices = ["Checklist", "Action Plan", "Guide"]
+        reason = "The research format emphasizes a short, actionable sequence of checks and next steps."
+    else:
+        choices = ["Guide", "Playbook", "Workbook"]
+        reason = "The available opportunity suggests a practical explanatory product; review the recommendation against the audience's needs."
+    return choices, reason
+
+
+def _provider_client():
+    api_key = os.getenv("PRODUCT_BUILDER_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise BlueprintGenerationError(
+            "AI blueprint generation is not configured. Set PRODUCT_BUILDER_API_KEY (or OPENAI_API_KEY) in the app environment, then retry."
+        )
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise BlueprintGenerationError("AI generation dependency is missing. Install the packages in requirements.txt.") from exc
+    base_url = os.getenv("PRODUCT_BUILDER_API_BASE") or os.getenv("OPENAI_BASE_URL")
+    options: dict[str, Any] = {"api_key": api_key, "timeout": 60.0, "max_retries": 2}
+    if base_url:
+        options["base_url"] = base_url
+    return OpenAI(**options)
+
+
+
+def _local_blueprint(inputs: ProductInputs, selected_type: str) -> ProductBlueprint:
+    """Deterministic no-API-key blueprint for the free deployment path."""
+    recommended, reason = recommend_product_types(inputs)
+    title = inputs.product_title.strip() or f"{selected_type} for {inputs.audience}"
+    problem = inputs.problem.strip()
+    promise = inputs.promise.strip()
+    audience = inputs.audience.strip()
+    formats = inputs.format_hints[:3] or [selected_type]
+    profile = product_type_profile(selected_type)
+    section_names = list(profile["sections"])
+    sections = [
+        {
+            "title": name,
+            "purpose": (
+                f"Use the {selected_type.lower()} format to help the reader move from the stated problem toward the intended outcome, without promising unverified results."
+            ),
+            "components": list(profile["blocks"]),
+        }
+        for name in section_names
+    ]
+    return ProductBlueprint.model_validate({
+        "title": title,
+        "subtitle": f"A practical {selected_type.lower()} for {audience}",
+        "target_audience": audience,
+        "core_problem": problem,
+        "desired_outcome": promise,
+        "promise": promise,
+        "product_type": selected_type,
+        "recommended_types": recommended[:3],
+        "recommendation_reason": reason + " This free-mode blueprint is deterministic and should be validated before publication.",
+        "outline": sections,
+        "estimated_page_count": max(8, min(40, 5 + len(sections) * 4)),
+        "exercises": ["5-minute baseline assessment", "Apply the workflow to one real example"],
+        "checklists": ["Start checklist", "Completion checklist"],
+        "worksheets": ["Problem-to-action worksheet", "Progress review worksheet"],
+        "examples": ["Illustrative worked example", "Before/after process example (hypothetical)"],
+        "templates": [f"Reusable {formats[0]} template", "One-page implementation tracker"],
+        "bonuses": ["Quick-start checklist", "One-page reference sheet"],
+        "design_direction": f"Use the {profile['template']} design profile for the {selected_type} format, with purpose-built sections and reusable content blocks.",
+    })
+
+def generate_blueprint(
+    inputs: ProductInputs,
+    selected_type: str,
+    *,
+    client=None,
+    model: str | None = None,
+) -> ProductBlueprint:
+    """Generate and validate one structured blueprint using an OpenAI-compatible API."""
+    if selected_type not in PRODUCT_TYPES:
+        raise ValueError("Choose a supported product type before generating the blueprint.")
+    if client is None and not (os.getenv("PRODUCT_BUILDER_API_KEY") or os.getenv("OPENAI_API_KEY")):
+        return _local_blueprint(inputs, selected_type)
+    client = client or _provider_client()
+    model = model or os.getenv("PRODUCT_BUILDER_MODEL", "gpt-5-mini")
+    request_data = {
+        "opportunity": inputs.model_dump(mode="json"),
+        "selected_product_type": selected_type,
+        "allowed_product_types": PRODUCT_TYPES,
+    }
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(request_data, ensure_ascii=False)},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "product_blueprint", "strict": True, "schema": BLUEPRINT_JSON_SCHEMA},
+            },
+            max_completion_tokens=3600,
+        )
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("The provider returned an empty response.")
+        payload = json.loads(content)
+        payload["product_type"] = selected_type
+        return ProductBlueprint.model_validate(payload)
+    except BlueprintGenerationError:
+        raise
+    except Exception as exc:
+        # Do not echo request bodies, source text, provider headers, or credentials.
+        name = type(exc).__name__
+        raise BlueprintGenerationError(
+            f"Blueprint generation failed ({name}). Check the configured provider/model and try again. Your research inputs remain available for retry."
+        ) from exc
+
+# CUSTOM_FORMAT_SELECTION_HELPER
+# The 12 built-in formats are a starting library, not a hard limit.
+BUILTIN_PRODUCT_FORMATS = [
+    "ebook", "playbook", "workbook", "planner", "checklist", "guide",
+    "journal", "tracker", "action_plan", "challenge", "template", "worksheet",
+]
+
+def recommend_product_format(problem_type: str, desired_outcome: str = "") -> dict:
+    """Choose a built-in format when it fits; otherwise return a custom format."""
+    text = f"{problem_type} {desired_outcome}".lower()
+    rules = [
+        (("check", "avoid mistake", "steps"), "checklist"),
+        (("schedule", "organize", "weekly", "daily"), "planner"),
+        (("practice", "exercise", "learn", "reflection"), "workbook"),
+        (("track", "progress", "habit", "measure"), "tracker"),
+        (("template", "copy", "email", "script"), "template"),
+        (("30 day", "30-day", "challenge", "days"), "challenge"),
+        (("journal", "reflection", "diary"), "journal"),
+        (("step by step", "how to", "tutorial"), "guide"),
+        (("strategy", "implementation", "playbook"), "playbook"),
+    ]
+    for keywords, fmt in rules:
+        if any(k in text for k in keywords):
+            return {"format": fmt, "is_custom": False}
+    return {"format": "custom", "is_custom": True,
+            "reason": "No built-in format is a strong enough fit; do not force one."}

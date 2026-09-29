@@ -1,0 +1,11 @@
+streamlit>=1.36
+requests>=2.31
+beautifulsoup4>=4.12
+reportlab>=4.0
+pydantic>=2.7
+pandas>=2.1
+extra-streamlit-components>=0.1.81
+pillow>=10.0
+pypdf>=5.0
+svglib>=1.5
+pg8000>=1.31,<2
