@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from html.parser import HTMLParser
+from io import BytesIO
 from typing import Any, Iterable
 
 from app.product.product_schema import ProductBlueprint, ProductContent, ProductInputs
@@ -504,3 +505,68 @@ def qa_snapshot_fingerprint(
         "preview_sha256": hashlib.sha256((preview_html or "").encode("utf-8")).hexdigest(),
     }
     return hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+
+def final_verification(blueprint, content, inputs, *, design, visual_assets=None, preview_html=None, pdf_bytes=None) -> dict[str, Any]:
+    """Final pre-publish gate combining saved-content QA with PDF-level structural checks."""
+    result = run_product_qa(
+        blueprint, content, inputs, design=design,
+        visual_assets=visual_assets or [], preview_html=preview_html,
+    )
+    checks = list(result.get("checks", []))
+    blocking = [c for c in checks if c.get("status") in {"FLAG", "NOT RUN"}]
+
+    if pdf_bytes:
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(BytesIO(pdf_bytes))
+            pages = list(reader.pages)
+            pdf_issues = []
+            if not pages:
+                pdf_issues.append("PDF contains no pages.")
+            page_texts = []
+            for idx, page in enumerate(pages, start=1):
+                text = re.sub(r"\s+", " ", page.extract_text() or "").strip()
+                page_texts.append(text)
+                if not text:
+                    pdf_issues.append(f"PDF page {idx} has no extractable text; inspect the page visually.")
+            # Catch accidental repeated long passages across different pages while ignoring short labels.
+            repeated = []
+            for i in range(len(page_texts)):
+                for j in range(i + 1, len(page_texts)):
+                    a, b = page_texts[i], page_texts[j]
+                    if len(a) < 100 or len(b) < 100:
+                        continue
+                    ratio = _shingle_similarity(a, b)
+                    if ratio >= 0.92:
+                        repeated.append(f"PDF pages {i + 1} and {j + 1} are near-duplicates ({ratio:.0%} similarity); inspect for repeated content.")
+            pdf_issues.extend(repeated)
+            checks.append(_check(
+                "Final PDF structural verification", "Final PDF", "FLAG" if pdf_issues else "PASS",
+                f"Inspected {len(pages)} exported PDF page(s) for readable structure and repeated long-page content.",
+                "Uses pypdf text extraction plus a conservative 5-gram similarity check. It does not replace human visual inspection of typography, spacing, images, or print rendering.",
+                pdf_issues,
+            ))
+        except Exception as exc:
+            checks.append(_check(
+                "Final PDF structural verification", "Final PDF", "NOT RUN",
+                f"The exported PDF could not be structurally inspected ({type(exc).__name__}).",
+                "PDF inspection requires a readable PDF byte stream.", [str(exc)],
+            ))
+    else:
+        checks.append(_check(
+            "Final PDF structural verification", "Final PDF", "NOT RUN",
+            "No exported PDF was supplied to the final verification gate.",
+            "Export the current saved product first, then run final verification again.",
+        ))
+
+    final_issues = [c for c in checks if c.get("status") in {"FLAG", "NOT RUN"}]
+    result["checks"] = checks
+    result["status"] = "PASS" if not final_issues else "NEEDS REVISION"
+    result["final_verification"] = True
+    result["limitations"] = list(result.get("limitations", [])) + [
+        "Final verification is a deterministic pre-publish gate; it cannot judge taste, factual truth, commercial demand, or whether a visual is aesthetically ideal.",
+        "Always open the final PDF once on the device where it will be delivered, especially when custom fonts, unusual symbols, or user-uploaded images are used.",
+    ]
+    return result

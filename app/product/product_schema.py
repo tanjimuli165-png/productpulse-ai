@@ -71,6 +71,7 @@ class ProductInputs(BaseModel):
     differentiation: List[str] = Field(default_factory=list, max_length=12)
     evidence: List[EvidenceReference] = Field(default_factory=list, max_length=10)
     validation_steps: List[str] = Field(default_factory=list, max_length=12)
+    reference_material: str = Field(default="", max_length=50000)
 
     @field_validator("format_hints", "differentiation", "validation_steps")
     @classmethod

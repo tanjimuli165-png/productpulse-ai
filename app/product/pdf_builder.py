@@ -537,34 +537,30 @@ def _assemble_pdf(
     toc.levelStyles = [styles["TOC"]]
     toc.dotsMinLevel = 0
 
-    # Build the cover title block first so it can be measured, then size the
-    # cover visuals to the space that remains. This keeps eyebrow + title +
-    # subtitle on page 1 even when several cover visuals are saved.
+    # Build the cover hierarchy first: category → title → subtitle → key promise.
+    # Visuals follow the hierarchy instead of pushing the title onto a later page.
     eyebrow = _paragraph(f"{template.name} · {blueprint.product_type}", styles["CoverEyebrow"])
     title_block: list[Flowable] = [
-        Spacer(1, 0.12 * inch),
+        Spacer(1, 0.10 * inch),
         _paragraph(content.product_title, styles["CoverTitle"]),
     ]
     if content.subtitle:
         title_block.append(_paragraph(content.subtitle, styles["CoverSubtitle"]))
     title_block.extend([
-        HRFlowable(width="35%", thickness=2, color=accent, hAlign="CENTER", spaceBefore=5, spaceAfter=16),
+        HRFlowable(width="28%", thickness=2, color=accent, hAlign="CENTER", spaceBefore=3, spaceAfter=12),
         _paragraph(f"For: {blueprint.target_audience}", styles["Body"]),
-        _paragraph(f"Product type: {blueprint.product_type}", styles["Body"]),
-        _paragraph(f"Intended outcome: {blueprint.desired_outcome}", styles["Body"]),
-        _paragraph("This is a research-backed product concept and evidence-supported hypothesis worth validating. It does not establish demand, sales, or commercial success.", styles["Callout"]),
+        _paragraph(f"Product type: {blueprint.product_type} · Intended outcome: {blueprint.desired_outcome}", styles["Body"]),
+        _paragraph("Evidence-supported concept · validate independently", styles["Callout"]),
     ])
     cover_frame_height = page_height - top_margin - bottom_margin
     reserved = 0.45 * inch + _measure_height([eyebrow], available_width) + _measure_height(title_block, available_width)
-    # Small slack so measured text/flowable rounding cannot push the title block
-    # onto a second page.
-    cover_visual_height = max(0.0, cover_frame_height - reserved - 10.0)
+    cover_visual_height = max(0.0, cover_frame_height - reserved - 12.0)
     cover_visuals = _cover_visual_grid(placements.get("cover", []), styles, available_width, cover_visual_height)
 
     story: list[Flowable] = [Spacer(1, 0.45 * inch), eyebrow]
-    story.extend(cover_visuals)
-    # KeepTogether guarantees the eyebrow+title block never splits across pages.
+    # KeepTogether guarantees the core cover hierarchy never splits across pages.
     story.append(KeepTogether(title_block))
+    story.extend(cover_visuals)
     story.extend([
         PageBreak(),
         _paragraph("Contents", styles["SectionHeading"]),

@@ -1,3 +1,4 @@
+import io
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,7 +20,7 @@ from app.backup import create_user_backup
 from app.database.backend import StorageConfigurationError, StorageConnectionError, load_storage_config
 from app.database.file_storage import StorageOperationError
 from app.database.db import ReportStore
-from app.database.models import Report
+from app.database.models import Evidence, Opportunity, ProblemSignal, Report
 from app.product.storage import ProductStore
 from app.ui.product_generator import render_product_generator
 from app.evidence_metrics import count_identified_contributors, is_eligible_evidence
@@ -100,6 +101,89 @@ def _render_auth(store: ReportStore, cookies: stx.CookieManager) -> str | None:
         st.info("Log in or create an account to run scans and access private history.")
     return None
 
+
+
+
+def _extract_reference_material(uploaded_files) -> str:
+    """Read small user-supplied text/PDF references without requiring a separate service."""
+    chunks: list[str] = []
+    for uploaded in uploaded_files or []:
+        name = str(getattr(uploaded, "name", "reference"))
+        suffix = Path(name).suffix.lower()
+        try:
+            raw = uploaded.getvalue()
+            if suffix in {".txt", ".md", ".markdown", ".csv"}:
+                text = raw.decode("utf-8", errors="replace")
+            elif suffix == ".pdf":
+                from pypdf import PdfReader
+                reader = PdfReader(io.BytesIO(raw))
+                text = "\n".join((page.extract_text() or "") for page in reader.pages)
+            else:
+                text = ""
+            text = text.strip()
+            if text:
+                chunks.append(f"[{name}]\n{text[:12000]}")
+        except Exception as exc:
+            chunks.append(f"[{name}]\n[Could not extract text: {type(exc).__name__}]")
+    return "\n\n".join(chunks)[:50000]
+
+
+def _build_manual_topic_report(topic: str, description: str, audience: str, desired_outcome: str, materials: str, user_id: str) -> Report:
+    """Create a source-labeled report for creator-supplied topics without pretending it is market research."""
+    topic = topic.strip()
+    description = description.strip()
+    audience = audience.strip() or "People interested in this topic"
+    desired_outcome = desired_outcome.strip() or f"A practical resource that helps the reader work with {topic}."
+    evidence = []
+    if materials.strip():
+        evidence.append(Evidence(
+            source="User provided",
+            title="Creator-supplied reference material",
+            text=materials.strip(),
+            metadata={"origin": "manual_topic_input"},
+        ))
+    problem = ProblemSignal(
+        problem=description,
+        customer_language=[description],
+        frequency=1,
+        sentence_mentions=1,
+        evidence_items=len(evidence),
+        unique_contributors=None,
+        evidence_urls=[],
+        urgency=0.0,
+        objection_bucket="Creator-supplied topic",
+    )
+    opportunity = Opportunity(
+        name=f"{topic} Digital Product",
+        audience=audience,
+        promise=desired_outcome,
+        format=["Guide", "Workbook", "Playbook"],
+        problem_fit=0.0,
+        willingness_to_pay=0.0,
+        competition_gap=0.0,
+        competition_gap_status="not_assessed",
+        evidence_strength=0.0,
+        validation_score=0.0,
+        pricing={"benchmark": "Not assessed"},
+        pricing_rationale="No marketplace or payment research was run for this creator-supplied topic.",
+        value_hook="Creator-supplied topic and materials will be used as the starting brief.",
+        objection_bucket="Creator-supplied topic",
+        components=["Topic-specific explanation", "Actionable steps", "Exercises or worksheets where appropriate"],
+        differentiation=["Uses the creator's supplied description and reference material"],
+        risks=["Topic fit and demand were not independently researched in this mode."],
+        next_steps=["Review the generated blueprint", "Check all factual claims against supplied materials", "Validate the finished product with intended readers"],
+    )
+    return Report(
+        id=uuid.uuid4().hex,
+        topic=topic,
+        user_id=user_id,
+        scoring_version="manual_topic_v1",
+        evidence=evidence,
+        problems=[problem],
+        opportunities=[opportunity],
+        executive_summary="Creator-supplied topic brief. This report is not a market-research result.",
+        collection_notes=["Created from the user's topic, description, and optional supplied reference material; no public-source demand claim is made."],
+    )
 
 def run_engine(topic: str, sources: list[str], limit: int) -> Report:
     topic = normalize_query(topic)
@@ -247,6 +331,30 @@ def render():
             st.error("Private storage is temporarily unavailable, so this product page could not be loaded. Nothing was switched to local storage; please try again shortly.")
         return
 
+    st.subheader("Create a product from your own topic")
+    st.caption("Give ProductPulse AI your topic and description, then optionally add notes or source material. It will use those inputs as the product brief; this mode does not pretend they are market research.")
+    with st.form("manual_product_form"):
+        manual_topic = st.text_input("Topic", placeholder="e.g., beginner home gardening", key="manual_topic")
+        manual_description = st.text_area("What do you want the product to teach or solve?", placeholder="Describe the problem, idea, method, or knowledge you want the product to cover.", height=120, key="manual_description")
+        manual_audience = st.text_input("Who is it for? (optional)", placeholder="e.g., complete beginners", key="manual_audience")
+        manual_outcome = st.text_area("What should the reader be able to do after using it? (optional)", height=90, key="manual_outcome")
+        manual_materials = st.text_area("Related notes, facts, outline, examples, or source material (optional)", placeholder="Paste anything you want the product generator to use. It will not invent citations for this material.", height=150, key="manual_materials")
+        manual_files = st.file_uploader("Optional reference files (TXT, MD, CSV, or PDF)", type=["txt", "md", "markdown", "csv", "pdf"], accept_multiple_files=True, key="manual_reference_files")
+        manual_submit = st.form_submit_button("Start product from my topic", type="primary")
+    if manual_submit:
+        if not manual_topic.strip() or not manual_description.strip():
+            st.error("Enter both a topic and a description before starting the product.")
+        else:
+            extracted = _extract_reference_material(manual_files)
+            combined_materials = "\n\n".join(part for part in [manual_materials.strip(), extracted] if part)
+            manual_report = _build_manual_topic_report(manual_topic, manual_description, manual_audience, manual_outcome, combined_materials, user_id)
+            store.save(manual_report, user_id=user_id)
+            st.session_state["report"] = manual_report
+            st.session_state["product_builder_state"] = {"report_id": manual_report.id, "opportunity_index": 0, "product_id": uuid.uuid4().hex}
+            st.rerun()
+
+    st.divider()
+    st.subheader("Or run a public research scan")
     st.text_input("Niche, topic, or problem statement", placeholder="e.g., onboarding systems for independent consultants", key="topic_input")
     st.caption("Quick examples")
     example_cols = st.columns(len(QUICK_TOPICS))

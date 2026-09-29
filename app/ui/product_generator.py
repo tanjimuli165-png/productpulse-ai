@@ -13,7 +13,7 @@ from app.product.content_generator import ContentGenerationError, generate_secti
 from app.product.editing import replace_content_section, replace_content_section_edits, replace_product_cover
 from app.product.pdf_builder import ProductPdfExportError, export_saved_product_pdf
 from app.product.product_schema import DESIGN_TEMPLATE_IDS, PAGE_SIZE_OPTIONS, PRODUCT_TYPES, EvidenceReference, ProductBlueprint, ProductContent, ProductDesign, ProductInputs
-from app.product.qa import qa_snapshot_fingerprint, run_product_qa
+from app.product.qa import final_verification, qa_snapshot_fingerprint, run_product_qa
 from app.product.storage import ProductStore
 from app.product.strategy import BlueprintGenerationError, generate_blueprint, recommend_product_types
 from app.product.template_engine import PAGE_SIZES, design_details, get_template, render_product_html, template_recommendation
@@ -29,6 +29,8 @@ from app.product.visual_generator import (
 
 
 def _matching_problem(report: Report, opportunity: Opportunity):
+    if report.scoring_version == "manual_topic_v1" and report.problems:
+        return report.problems[0]
     audience = (opportunity.audience or "").lower()
     return next((problem for problem in report.problems if problem.problem.lower() in audience), None)
 
@@ -38,11 +40,13 @@ def build_product_inputs(report: Report, opportunity: Opportunity) -> ProductInp
     problem = _matching_problem(report, opportunity)
     evidence_refs: list[EvidenceReference] = []
     if problem:
-        urls = set(problem.evidence_urls)
-        for item in report.evidence:
-            if not item.url or item.url not in urls or not is_eligible_evidence(item):
-                continue
-            identity = f"{item.source}\n{item.url}\n{item.title}".encode("utf-8")
+        if report.scoring_version == "manual_topic_v1":
+            source_items = report.evidence[:10]
+        else:
+            urls = set(problem.evidence_urls)
+            source_items = [item for item in report.evidence if item.url and item.url in urls and is_eligible_evidence(item)][:10]
+        for item in source_items:
+            identity = f"{item.source}\n{item.url}\n{item.title}\n{item.text[:500]}".encode("utf-8")
             evidence_refs.append(EvidenceReference(
                 evidence_id="EV-" + hashlib.sha256(identity).hexdigest()[:12].upper(),
                 source_title=item.title or "Untitled source",
@@ -50,8 +54,6 @@ def build_product_inputs(report: Report, opportunity: Opportunity) -> ProductInp
                 customer_language=problem.problem,
                 url=item.url,
             ))
-            if len(evidence_refs) >= 10:
-                break
     return ProductInputs(
         product_title=opportunity.name,
         audience=opportunity.audience,
@@ -232,6 +234,7 @@ def _render_content_editor(
     content: ProductContent,
     blueprint: ProductBlueprint,
     evidence: list[EvidenceReference],
+    reference_material: str = "",
 ) -> None:
     """Provide compact, structured text editing and one-section regeneration."""
     st.divider()
@@ -333,7 +336,7 @@ def _render_content_editor(
                 help="Replaces only this section with newly generated content; other saved sections remain unchanged.",
             ):
                 try:
-                    generated = generate_section_content(blueprint, section.section_index, evidence)
+                    generated = generate_section_content(blueprint, section.section_index, evidence, reference_material)
                     updated = replace_content_section(content, generated)
                     product_store.save_content(
                         product_id=product_id, user_id=user_id,
@@ -657,6 +660,70 @@ def _render_quality_assurance(
                 )
 
 
+
+def _render_final_verification(product_store: ProductStore, user_id: str, product_id: str, content: ProductContent, blueprint: ProductBlueprint, inputs: ProductInputs, saved_product: dict) -> None:
+    """Run the last deterministic pre-publish gate against the saved product and exported PDF."""
+    st.divider()
+    st.subheader("Final verification · before download")
+    st.caption("Last gate: content, repetition, preview structure, visuals, and the actual exported PDF are checked together.")
+    template_id = saved_product.get("design_template_id", "minimal_professional")
+    page_size = saved_product.get("page_size", "letter")
+    try:
+        visual_assets = product_store.get_visual_assets(product_id, user_id)
+        preview_html = render_product_html(
+            content, template_id, page_size, subtitle=content.subtitle,
+            product_type=blueprint.product_type, audience=blueprint.target_audience,
+            evidence=inputs.evidence, visual_assets=visual_assets,
+        )
+        fingerprint = qa_snapshot_fingerprint(
+            blueprint, content, design={"template_id": template_id, "page_size": page_size},
+            visual_assets=visual_assets, preview_html=preview_html,
+        )
+    except Exception as exc:
+        st.error(f"Final verification could not prepare the current saved snapshot ({type(exc).__name__}).")
+        return
+
+    if st.button("Run final verification", type="primary", key=f"product_{product_id}_final_verify"):
+        try:
+            export = export_saved_product_pdf(product_id, user_id, product_store)
+            result = final_verification(
+                blueprint, content, inputs,
+                design={"template_id": template_id, "page_size": page_size},
+                visual_assets=visual_assets, preview_html=preview_html, pdf_bytes=export.pdf_bytes,
+            )
+            product_store.save_qa_run(
+                product_id=product_id, user_id=user_id,
+                snapshot_fingerprint=fingerprint, result_payload=result,
+            )
+            st.session_state[f"product_{product_id}_final_verified"] = result.get("status") == "PASS"
+            if result.get("status") == "PASS":
+                st.success("Final verification PASS — the current saved product and exported PDF passed all available deterministic checks.")
+            else:
+                st.warning("Final verification found items that need review. See the findings below.")
+            st.rerun()
+        except ProductPdfExportError as exc:
+            st.error(f"Final verification could not export the current product: {exc}")
+        except Exception as exc:
+            st.error(f"Final verification failed ({type(exc).__name__}). Your saved product was not changed.")
+
+    try:
+        runs = product_store.list_qa_runs(product_id, user_id, limit=10)
+    except Exception:
+        runs = []
+    final_runs = [r for r in runs if r.get("result_payload", {}).get("final_verification")]
+    if final_runs:
+        result = final_runs[0].get("result_payload", {})
+        if result.get("status") == "PASS":
+            st.success("READY FOR DOWNLOAD — final verification PASS.")
+        else:
+            st.warning("NOT READY YET — final verification found review items.")
+        for check in result.get("checks", []):
+            if check.get("status") in {"FLAG", "NOT RUN"}:
+                with st.expander(f"{check.get('status')} · {check.get('name')}", expanded=True):
+                    st.write(check.get("message", ""))
+                    for issue in check.get("issues", []):
+                        st.write(f"- {issue}")
+
 def _render_pdf_export(product_store: ProductStore, user_id: str, product_id: str) -> None:
     """Offer an in-memory PDF assembled only from the owner's saved product snapshot."""
     st.divider()
@@ -700,14 +767,49 @@ def _render_pdf_export(product_store: ProductStore, user_id: str, product_id: st
     )
     for check in export.pdf_preflight:
         st.write(f"- {check}")
+    try:
+        latest_runs = product_store.list_qa_runs(product_id, user_id, limit=1)
+        saved_now = product_store.get(product_id, user_id)
+        latest_result = latest_runs[0].get("result_payload", {}) if latest_runs else {}
+        if saved_now and saved_now.get("content_payload") and saved_now.get("blueprint_payload"):
+            bp_now = ProductBlueprint.model_validate(saved_now["blueprint_payload"])
+            content_now = ProductContent.model_validate(saved_now["content_payload"])
+            inputs_now = ProductInputs.model_validate(saved_now["inputs_payload"])
+            template_now = saved_now.get("design_template_id", "minimal_professional")
+            size_now = saved_now.get("page_size", "letter")
+            visuals_now = product_store.get_visual_assets(product_id, user_id)
+            preview_now = render_product_html(
+                content_now, template_now, size_now, subtitle=content_now.subtitle,
+                product_type=bp_now.product_type, audience=bp_now.target_audience,
+                evidence=inputs_now.evidence, visual_assets=visuals_now,
+            )
+            current_fp = qa_snapshot_fingerprint(
+                bp_now, content_now, design={"template_id": template_now, "page_size": size_now},
+                visual_assets=visuals_now, preview_html=preview_now,
+            )
+        else:
+            current_fp = ""
+        final_verified_current = bool(
+            latest_runs
+            and latest_runs[0].get("snapshot_fingerprint") == current_fp
+            and latest_result.get("final_verification")
+            and latest_result.get("status") == "PASS"
+        )
+    except Exception:
+        final_verified_current = False
+
+    if not final_verified_current:
+        st.warning("Run Final verification and get PASS before downloading this final product PDF.")
+
     st.download_button(
         "Download product PDF",
         data=export.pdf_bytes,
         file_name=export.filename,
         mime="application/pdf",
         key=f"product_{product_id}_download_pdf",
-        help="Downloads a PDF assembled from the latest approved and saved product snapshot.",
+        help="Download is enabled only after the current saved product passes Final verification.",
         type="primary",
+        disabled=not final_verified_current,
     )
     with st.expander("PDF validation scope and limitations"):
         for limitation in export.limitations:
@@ -763,7 +865,7 @@ def _render_content_generation(
     if remaining and action_cols[0].button("Generate next section", type="primary", key=f"product_{product_id}_generate_next"):
         next_index = remaining[0]
         try:
-            generated = generate_section_content(blueprint, next_index, inputs.evidence)
+            generated = generate_section_content(blueprint, next_index, inputs.evidence, inputs.reference_material)
             updated = ProductContent(
                 product_title=content.product_title,
                 subtitle=content.subtitle,
@@ -794,7 +896,7 @@ def _render_content_generation(
                         section = blueprint.outline[section_index]
                         st.write(f"Generating {position} of {len(remaining)}: {section.title}")
                         try:
-                            generated = generate_section_content(blueprint, section_index, inputs.evidence)
+                            generated = generate_section_content(blueprint, section_index, inputs.evidence, inputs.reference_material)
                             current_sections.append(generated)
                             snapshot = ProductContent(
                                 product_title=content.product_title,
@@ -832,7 +934,7 @@ def _render_content_generation(
 
     if content.sections:
         _render_content_editor(
-            product_store, user_id, product_id, content, blueprint, inputs.evidence
+            product_store, user_id, product_id, content, blueprint, inputs.evidence, inputs.reference_material
         )
         _render_template_engine(
             product_store, user_id, product_id, content, blueprint, inputs.evidence, saved_product
@@ -840,6 +942,7 @@ def _render_content_generation(
         _render_quality_assurance(
             product_store, user_id, product_id, content, blueprint, inputs, saved_product
         )
+        _render_final_verification(product_store, user_id, product_id, content, blueprint, inputs, saved_product)
         _render_pdf_export(product_store, user_id, product_id)
         with st.expander("Structured content blocks", expanded=False):
             _render_generated_content(content, inputs.evidence)
@@ -880,16 +983,20 @@ def render_product_generator(
     )
     prefix = f"product_{product_id}"
     st.title("AI Digital Product Factory")
-    st.caption("Turn one research-backed opportunity into a reviewable product strategy blueprint.")
-    st.info("This blueprint is an evidence-supported hypothesis worth validating. It is not a claim of guaranteed demand, sales, or commercial success.")
+    is_manual_topic = report.scoring_version == "manual_topic_v1"
+    st.caption("Turn your own topic brief or a research-backed opportunity into a reviewable digital product blueprint.")
+    if is_manual_topic:
+        st.info("Creator-supplied topic mode: the blueprint can use your description and supplied reference material, but it does not establish demand, sales, or research validation.")
+    else:
+        st.info("This blueprint is an evidence-supported hypothesis worth validating. It is not a claim of guaranteed demand, sales, or commercial success.")
     st.markdown(f"**Selected opportunity:** {opportunity.name}")
     st.write(f"**Research promise:** {opportunity.promise}")
     if inputs.evidence:
-        st.markdown("**Linked evidence**")
+        st.markdown("**Supplied reference material**" if is_manual_topic else "**Linked evidence**")
         for reference in inputs.evidence:
             label = f"{reference.source_type}: {reference.source_title} · {reference.evidence_id}"
             st.markdown(f"- [{label}]({reference.url})" if reference.url else f"- {label}")
-    else:
+    elif not is_manual_topic:
         st.warning("No source record could be directly linked to this problem signal. The blueprint will retain the research hypothesis and should be treated as needing validation.")
 
     inputs = _edit_inputs(inputs, prefix)
@@ -969,6 +1076,19 @@ def render_product_generator(
             with st.expander("Blueprint version history"):
                 for version in reversed(existing["versions"]):
                     st.write(f"**v{version['version_number']}** · {version['created_at']} · {version['change_summary']}")
+        st.divider()
+        st.subheader("Visual / photo plan")
+        st.caption("The builder flags places where a visual may help. A photo is optional unless your topic specifically depends on real-world images. You can create a simple icon/shape/diagram or upload your own PNG/JPEG later in Phase 5.")
+        visual_candidates = []
+        for section in blueprint.outline:
+            components = {item.lower() for item in section.components}
+            if components & {"steps", "example", "worksheet", "table", "checklist", "action_steps"}:
+                visual_candidates.append(section)
+        if visual_candidates:
+            for section in visual_candidates:
+                st.write(f"- **{section.title}** — consider a diagram, example image, checklist graphic, or your own photo if it adds real value.")
+        else:
+            st.write("- No section is strongly flagged for a visual. You can still add a cover visual or upload a useful image in Phase 5.")
         _render_content_generation(product_store, user_id, product_id, inputs, blueprint, existing)
     if existing:
         st.caption(f"Saved product status: **{existing['status']}** · Last updated {existing['updated_at']}")

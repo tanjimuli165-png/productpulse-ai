@@ -90,6 +90,7 @@ def generate_section_content(
     blueprint: ProductBlueprint,
     section_index: int,
     evidence: list[EvidenceReference] | None = None,
+    reference_material: str = "",
     *,
     client=None,
     model: str | None = None,
@@ -135,6 +136,7 @@ def generate_section_content(
             "planned_components": section.components,
         },
         "available_research_references": [item.model_dump(mode="json") for item in references],
+        "creator_reference_material": reference_material,
     }
     try:
         response = client.chat.completions.create(

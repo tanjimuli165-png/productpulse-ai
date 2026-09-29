@@ -231,3 +231,7 @@ The free-first build includes deterministic, type-specific blueprint profiles an
 - Worksheet
 
 Each format keeps the existing three visual design systems while receiving purpose-built section structure and content-block recommendations. This keeps the renderer stable while making the product factory useful across multiple digital-product formats before deployment.
+
+## Final pre-publish verification
+
+Before downloading a finished product, use **Final verification · before download** in the Product Factory. It combines the deterministic content/preview QA with structural inspection of the actual exported PDF, including long-page repetition candidates and empty/unreadable PDF pages. The final PDF download is enabled only after the current saved snapshot has a `PASS` final-verification result.
