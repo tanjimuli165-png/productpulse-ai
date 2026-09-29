@@ -25,8 +25,8 @@ jobs:
           ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -1)
 
           if [ -z "$ZIP" ]; then
-            echo "No ZIP file found."
-            exit 1
+            echo "No ZIP file found. Project is already extracted; nothing to do."
+            exit 0
           fi
 
           rm -rf _productpulse_extract
