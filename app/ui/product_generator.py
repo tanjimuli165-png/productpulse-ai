@@ -165,6 +165,14 @@ def _edit_inputs(inputs: ProductInputs, prefix: str) -> ProductInputs:
             formats = st.text_input("Format hints (comma-separated)", ", ".join(values["format_hints"]), key=f"{prefix}_input_formats")
             differentiation = st.text_area("Differentiation (one item per line)", _list_text(values["differentiation"]), key=f"{prefix}_input_diff", height=100)
             validation = st.text_area("Validation steps (one per line)", _list_text(values["validation_steps"]), key=f"{prefix}_input_validation", height=100)
+            reference_material = st.text_area(
+                "Related notes / source material",
+                values.get("reference_material", ""),
+                key=f"{prefix}_input_reference_material",
+                height=160,
+                max_chars=50000,
+                help="Keep your own notes, facts, examples, outline, or supplied source material here. This material is passed to content generation as creator-provided context.",
+            )
             applied = st.form_submit_button("Apply input edits")
         if applied:
             try:
@@ -177,7 +185,7 @@ def _edit_inputs(inputs: ProductInputs, prefix: str) -> ProductInputs:
                     differentiation=_line_items(differentiation),
                     evidence=values["evidence"],
                     validation_steps=_line_items(validation),
-                    reference_material=values.get("reference_material", ""),
+                    reference_material=reference_material,
                 )
                 st.session_state[f"{prefix}_current_inputs"] = updated.model_dump(mode="json")
                 st.session_state[f"{prefix}_inputs_applied"] = True
