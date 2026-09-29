@@ -745,7 +745,7 @@ def _render_pdf_export(product_store: ProductStore, user_id: str, product_id: st
         return
 
     if export.qa_history_unavailable:
-        st.warning("The latest private QA history could not be read for this export. The PDF is available, but its QA status is unknown; check the saved QA history before relying on it.")
+        st.warning("The latest private QA history could not be read for this export. The final PDF is locked until the saved QA history is verified and Final verification passes.")
     elif export.latest_qa_status is None:
         st.warning("No saved Phase 7 QA run is available. Export is still available, but the content and preview have not been checked by that workflow.")
     elif not export.latest_qa_is_current:
