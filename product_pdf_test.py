@@ -48,7 +48,7 @@ def blueprint() -> ProductBlueprint:
         recommended_types=["Workbook"],
         recommendation_reason="A workbook supports implementation.",
         outline=[
-            BlueprintSection(title="Plan the Week", purpose="Create a focused weekly plan.", components=["worksheet", "exercise"]),
+            BlueprintSection(title="Plan the Week", purpose="Create a focused weekly plan.", components=["steps", "exercise", "table"]),
             BlueprintSection(title="Review Progress", purpose="Review progress and adjust.", components=["checklist"]),
             BlueprintSection(title="Prepare Next Week", purpose="Choose the next action.", components=["action_steps"]),
         ],
@@ -203,7 +203,7 @@ class ProductPdfExportTests(unittest.TestCase):
         )
         self.store.save_qa_run(
             product_id="private-product", user_id="owner-a", snapshot_fingerprint=fingerprint,
-            result_payload={"status": "NEEDS REVISION", "checks": [{"name": "Example", "status": "FLAG"}]},
+            result_payload={"status": "PASS", "checks": [{"name": "Example", "status": "PASS"}]},
         )
 
         result = export_saved_product_pdf("private-product", "owner-a", self.store)
@@ -215,12 +215,12 @@ class ProductPdfExportTests(unittest.TestCase):
         self.assertAlmostEqual(height, 841.89, places=1)
         self.assertEqual(result.template_name, "Clean Workbook")
         self.assertEqual(result.page_size_label, "A4")
-        self.assertEqual(result.latest_qa_status, "NEEDS REVISION")
+        self.assertEqual(result.latest_qa_status, "PASS")
         self.assertTrue(result.latest_qa_is_current)
 
         self.store.save_design(product_id="private-product", user_id="owner-a", design={"template_id": "clean_workbook", "page_size": "letter"})
         stale_result = export_saved_product_pdf("private-product", "owner-a", self.store)
-        self.assertEqual(stale_result.latest_qa_status, "NEEDS REVISION")
+        self.assertEqual(stale_result.latest_qa_status, "PASS")
         self.assertFalse(stale_result.latest_qa_is_current)
 
     def test_export_is_owner_scoped_and_requires_approval_and_complete_saved_content(self):
@@ -268,13 +268,10 @@ class ProductPdfExportTests(unittest.TestCase):
         with self.assertRaisesRegex(ProductPdfExportError, "not present"):
             export_saved_product_pdf("private-product", "owner-a", self.store)
 
-    def test_qa_history_read_failure_does_not_block_export_or_claim_no_qa_run(self):
+    def test_qa_history_read_failure_locks_export_without_claiming_qa_pass(self):
         with patch.object(self.store, "list_qa_runs", side_effect=sqlite3.OperationalError("read unavailable")):
-            result = export_saved_product_pdf("private-product", "owner-a", self.store)
-
-        self.assertTrue(result.pdf_bytes.startswith(b"%PDF-"))
-        self.assertTrue(result.qa_history_unavailable)
-        self.assertIsNone(result.latest_qa_status)
+            with self.assertRaisesRegex(ProductPdfExportError, "QA history is unavailable"):
+                export_saved_product_pdf("private-product", "owner-a", self.store)
 
 
 if __name__ == "__main__":
