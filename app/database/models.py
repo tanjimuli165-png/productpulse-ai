@@ -101,5 +101,6 @@ class Report(BaseModel):
     gap_analysis: Dict[str, Any] = Field(default_factory=dict)
     product_blueprint: Dict[str, Any] = Field(default_factory=dict)
     launch_kit: Dict[str, Any] = Field(default_factory=dict)
+    research_audit: Dict[str, Any] = Field(default_factory=dict)
     executive_summary: str = ""
     collection_notes: List[str] = Field(default_factory=list)
