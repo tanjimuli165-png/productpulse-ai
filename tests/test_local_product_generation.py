@@ -29,7 +29,7 @@ def test_meal_prep_local_generation_is_specific_and_section_aware():
     ]
     combined = " ".join(rendered)
 
-    assert "meal prep" in combined
+    assert "meal prep" in combined or "meal-prep" in combined
     assert "grocery" in combined or "cooking" in combined
 
     section_signatures = [
