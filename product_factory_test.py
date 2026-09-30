@@ -327,6 +327,44 @@ class ProductFactoryTests(unittest.TestCase):
         self.assertIn("generation_feedback", second_body)
         self.assertIn("grounding check failed", second_body["generation_feedback"]["previous_validation_error"])
 
+    def test_section_generation_rejects_output_without_product_topic(self):
+        payload = {
+            "blocks": [
+                {
+                    "kind": "steps",
+                    "title": "General planning steps",
+                    "body": "Use a weekly planning routine to organize tasks and move toward completing the weekly plan.",
+                    "items": ["Organize the tasks", "Review the plan", "Choose the next action"],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": [],
+                },
+                {
+                    "kind": "reference",
+                    "title": "Research note",
+                    "body": "A supplied research note for the approved product.",
+                    "items": [],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": [],
+                }
+            ]
+        }
+        fake = FakeClient(json.dumps(payload))
+        blueprint = ProductBlueprint.model_validate(sample_blueprint())
+        inputs = ProductInputs(
+            product_title="Meal Prep Workbook",
+            audience="People planning meals",
+            problem="Weekly planning helps organize tasks.",
+            promise="Complete the weekly plan with clear next actions.",
+        )
+        with self.assertRaises(ContentGenerationError) as ctx:
+            generate_section_content(
+                blueprint, 1, client=fake, model="test-model", product_inputs=inputs
+            )
+        self.assertIn("the product topic", str(ctx.exception))
+
+
     def test_section_generation_rejects_provider_output_that_is_too_generic(self):
         payload = {
             "blocks": [
