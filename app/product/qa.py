@@ -505,6 +505,76 @@ def run_product_qa(
     ))
 
     if inputs.research_backed:
+        excerpt_count = sum(
+            1 for item in inputs.evidence
+            if str(item.source_excerpt or item.customer_language).strip()
+        )
+        used_evidence_ids = {
+            evidence_id
+            for _, _, block in blocks
+            for evidence_id in block.evidence_ids
+        }
+        trace_issues = []
+        if excerpt_count < evidence_count:
+            trace_issues.append(
+                f"{evidence_count - excerpt_count} linked evidence reference(s) have no saved source excerpt or customer-language anchor; "
+                "review the original source before relying on it."
+            )
+        if evidence_count and not used_evidence_ids:
+            trace_issues.append(
+                "No saved content block cites a linked evidence ID. Review whether research-derived claims should be visibly grounded in the source record."
+            )
+        trace_status = "PASS" if not trace_issues else "REVIEW"
+        trace_message = (
+            f"{excerpt_count} of {evidence_count} linked evidence reference(s) include a grounding excerpt/anchor; "
+            f"{len(used_evidence_ids)} evidence ID(s) are cited in saved content."
+            if evidence_count
+            else "No linked research references are available for traceability."
+        )
+    else:
+        trace_status = "PASS"
+        trace_message = "Creator-topic mode: independent research traceability is not claimed."
+        trace_issues = []
+    checks.append(_check(
+        "Research evidence traceability", "Research / evidence", trace_status,
+        trace_message,
+        "Checks saved source excerpts/customer-language anchors and exact evidence IDs used by content blocks; it does not prove source truth or claim validity.",
+        trace_issues,
+    ))
+
+    research_anchor_terms = _tokens(
+        " ".join(
+            item.source_excerpt or item.customer_language
+            for item in inputs.evidence
+        )
+    )
+    if inputs.research_backed and research_anchor_terms:
+        anchor_matches = sorted(research_anchor_terms & _tokens(content_text))
+        anchor_status = "PASS" if len(anchor_matches) >= min(3, len(research_anchor_terms)) else "REVIEW"
+        anchor_issues = [] if anchor_status == "PASS" else [
+            "Saved content shares few distinctive terms with the linked research language. Review the original evidence and confirm that the product addresses what was observed."
+        ]
+        anchor_message = (
+            f"Matched {len(anchor_matches)} of {len(research_anchor_terms)} distinctive research-language terms in saved content."
+        )
+    elif inputs.research_backed:
+        anchor_status = "REVIEW"
+        anchor_issues = [
+            "Linked evidence does not expose usable excerpts or customer-language terms for a grounding check."
+        ]
+        anchor_message = "Research-language grounding could not be checked from the saved evidence references."
+    else:
+        anchor_status = "PASS"
+        anchor_issues = []
+        anchor_message = "Creator-topic mode: research-language grounding is not required."
+    checks.append(_check(
+        "Research-language grounding", "Product fit / evidence", anchor_status,
+        anchor_message,
+        "Exact distinctive-term overlap between saved source language and product content; this is a grounding signal, not semantic proof.",
+        anchor_issues,
+    ))
+
+    if inputs.research_backed:
         market_status = "PASS" if inputs.market_context else "REVIEW"
         market_issues = [] if inputs.market_context else [
             "No marketplace/listing context was attached. Similar-seller comparison is not verified in this product snapshot."
@@ -539,6 +609,34 @@ def run_product_qa(
         diff_message,
         "Presence check only; meaningful differentiation still requires evidence-grounded side-by-side comparison.",
         diff_issues,
+    ))
+
+    if inputs.research_backed and inputs.market_context and inputs.differentiation:
+        market_terms = _tokens(" ".join(inputs.market_context))
+        diff_terms = _tokens(" ".join(inputs.differentiation))
+        unique_diff_terms = sorted(diff_terms - market_terms)
+        differentiation_signal_status = "PASS" if len(unique_diff_terms) >= 2 else "REVIEW"
+        differentiation_signal_issues = [] if differentiation_signal_status == "PASS" else [
+            "The recorded differentiation shares most of its distinctive wording with the attached marketplace context. Compare the actual alternatives and make the difference concrete before publishing positioning claims."
+        ]
+        differentiation_signal_message = (
+            f"{len(unique_diff_terms)} differentiation term(s) are not present in the attached marketplace context."
+        )
+    elif inputs.research_backed:
+        differentiation_signal_status = "REVIEW"
+        differentiation_signal_issues = [
+            "A direct evidence-grounded differentiation comparison needs marketplace context plus a concrete differentiation statement."
+        ]
+        differentiation_signal_message = "Direct differentiation evidence comparison is incomplete."
+    else:
+        differentiation_signal_status = "PASS"
+        differentiation_signal_issues = []
+        differentiation_signal_message = "Creator-topic mode: marketplace differentiation comparison is not claimed."
+    checks.append(_check(
+        "Differentiation evidence signal", "Product fit / competition", differentiation_signal_status,
+        differentiation_signal_message,
+        "Compares distinctive differentiation terms with attached marketplace context; lexical distinctiveness does not prove a genuine market gap.",
+        differentiation_signal_issues,
     ))
 
     action_kinds = {block.kind for _, _, block in blocks if block.kind in {"steps", "action_steps", "checklist", "exercise", "worksheet", "table", "reflection"}}
