@@ -739,9 +739,13 @@ def _render_quality_assurance(
             visual_assets=visual_assets,
         )
         design = {"template_id": template_id, "page_size": page_size}
-        # Fingerprint the exact product inputs used by this QA run as well as its rendered snapshot.
-                fingerprint = qa_snapshot_fingerprint(
-            blueprint, content, design=design, visual_assets=visual_assets, preview_html=preview_html
+        fingerprint = qa_snapshot_fingerprint(
+            blueprint,
+            content,
+            inputs=inputs,
+            design=design,
+            visual_assets=visual_assets,
+            preview_html=preview_html,
         )
     except Exception as exc:
         st.error(f"QA could not prepare the current saved preview ({type(exc).__name__}). No result was saved; review the saved design and visuals, then retry.")
