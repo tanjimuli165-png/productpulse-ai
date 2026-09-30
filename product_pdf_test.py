@@ -221,6 +221,11 @@ class ProductPdfExportTests(unittest.TestCase):
         self.assertFalse(Path(self.directory.name, result.filename).exists())
 
     def test_repeated_export_produces_byte_identical_pdf_for_same_saved_snapshot(self):
+        self.store.save_design(
+            product_id="private-product",
+            user_id="owner-a",
+            design={"template_id": "minimal_professional", "page_size": "letter"},
+        )
         save_pass_qa(
             self.store,
             "private-product",
