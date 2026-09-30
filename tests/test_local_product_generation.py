@@ -93,7 +93,7 @@ def test_generic_local_fallback_avoids_near_duplicate_blocks():
         preview_html=None,
     )
     checks = {check["name"]: check for check in result["checks"]}
-    assert checks["Repeated content"]["status"] == "PASS"
+    assert checks["Repeated content"]["status"] == "PASS", checks["Repeated content"]["issues"]
 
 def test_creator_reference_material_is_used_in_local_generation():
     inputs = ProductInputs(
