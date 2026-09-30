@@ -1,0 +1,27 @@
+name: Package ProductPulse AI source
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Package latest green source
+        run: |
+          set -e
+          git archive --format=zip --output=ProductPulse-AI-FINAL-GREEN-7f6ddfd.zip 7f6ddfd4d5db1e9d10c96be446e23d2cb2ed7dac
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProductPulse-AI-FINAL-GREEN-7f6ddfd
+          path: ProductPulse-AI-FINAL-GREEN-7f6ddfd.zip
+          if-no-files-found: error
