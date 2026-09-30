@@ -629,7 +629,7 @@ def _assemble_pdf(
         bottomMargin=bottom_margin,
         title=content.product_title[:240],
         subject="Research-backed product concept · evidence-supported hypothesis worth validating",
-        author="AI Digital Product Factory",
+        author="ProductPulse AI",
         pageCompression=1,
         # Keep the assembled PDF byte-stable so Final Verification can bind its
         # SHA-256 to the exact file that will later be downloaded.
