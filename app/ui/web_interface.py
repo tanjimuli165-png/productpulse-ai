@@ -145,6 +145,7 @@ def _render_auth(store: ReportStore, cookies: stx.CookieManager) -> str | None:
             st.session_state.pop("session_token", None)
             st.session_state.pop("report", None)
             st.session_state.pop("pdf_path", None)
+            _clear_builder_state()
             st.rerun()
         return user["user_id"]
 
