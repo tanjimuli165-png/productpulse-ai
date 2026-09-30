@@ -739,7 +739,8 @@ def _render_quality_assurance(
             visual_assets=visual_assets,
         )
         design = {"template_id": template_id, "page_size": page_size}
-        fingerprint = qa_snapshot_fingerprint(
+        # Fingerprint the exact product inputs used by this QA run as well as its rendered snapshot.
+                fingerprint = qa_snapshot_fingerprint(
             blueprint, content, design=design, visual_assets=visual_assets, preview_html=preview_html
         )
     except Exception as exc:
@@ -839,7 +840,8 @@ def _render_final_verification(product_store: ProductStore, user_id: str, produc
             evidence=inputs.evidence, visual_assets=visual_assets,
         )
         fingerprint = qa_snapshot_fingerprint(
-            blueprint, content, design={"template_id": template_id, "page_size": page_size},
+            blueprint, content, inputs=inputs,
+            design={"template_id": template_id, "page_size": page_size},
             visual_assets=visual_assets, preview_html=preview_html,
         )
     except Exception as exc:
@@ -952,7 +954,8 @@ def _render_pdf_export(product_store: ProductStore, user_id: str, product_id: st
                 evidence=inputs_now.evidence, visual_assets=visuals_now,
             )
             current_fp = qa_snapshot_fingerprint(
-                bp_now, content_now, design={"template_id": template_now, "page_size": size_now},
+                bp_now, content_now, inputs=inputs_now,
+                design={"template_id": template_now, "page_size": size_now},
                 visual_assets=visuals_now, preview_html=preview_now,
             )
         else:
