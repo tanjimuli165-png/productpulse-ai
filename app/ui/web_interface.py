@@ -276,7 +276,7 @@ def run_engine(topic: str, sources: list[str], limit: int) -> Report:
     objection_matrix = build_objection_matrix(problems)
     spending = analyze_spending(evidence)
     gaps = detect_gaps(evidence)
-    opportunities = architect_opportunities(topic, problems, spending, gaps, len(reportable_evidence))
+    opportunities = architect_opportunities(topic, problems, spending, gaps, len(reportable_evidence), marketplace_gaps=marketplace_gaps)
     top_opportunity = opportunities[0] if opportunities else None
     top_problem = problems[0] if problems else None
     product_blueprint = build_blueprint(topic, top_opportunity, top_problem) if top_opportunity else {}
@@ -537,6 +537,14 @@ div[data-testid="stFileUploader"]{border-radius:12px}
                 st.write(f"**Value hook:** {opportunity.value_hook}")
                 st.write(f"**Objection bucket:** {opportunity.objection_bucket}")
                 st.write(f"**Pricing rationale:** {opportunity.pricing_rationale}")
+                if getattr(opportunity, "validation_findings", None):
+                    st.markdown("**Validation notes**")
+                    for finding in opportunity.validation_findings:
+                        st.write(f"- {finding}")
+                if getattr(opportunity, "market_context", None):
+                    st.markdown("**Comparable seller/listing context**")
+                    for record in opportunity.market_context:
+                        st.write(f"- {record}")
                 st.write("**Next steps:** " + "; ".join(opportunity.next_steps))
                 saved_products = product_store.recent_for_opportunity(user_id, report.id, opportunity_index)
                 for saved_product in saved_products:
