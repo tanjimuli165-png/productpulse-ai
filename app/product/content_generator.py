@@ -65,26 +65,142 @@ def _token_limit(model: str) -> dict[str, int]:
 
 
 
-def _local_section_content(blueprint: ProductBlueprint, section_index: int, evidence: list[EvidenceReference]) -> GeneratedSection:
-    """Deterministic no-API-key content so the free deployment remains usable."""
+def _local_section_content(
+    blueprint: ProductBlueprint,
+    section_index: int,
+    evidence: list[EvidenceReference],
+    reference_material: str = "",
+) -> GeneratedSection:
+    """Deterministic no-API-key content grounded in the actual product and section."""
     section = blueprint.outline[section_index]
-    blocks = [
-        {"kind": "paragraph", "title": section.title, "body": section.purpose, "items": [], "columns": [], "rows": [], "evidence_ids": []},
-        {"kind": "steps", "title": "Work through this section", "body": "Use these steps with the reader's own situation. Examples are illustrative, not promised outcomes.", "items": [
-            "Write down the current situation and the specific friction you want to improve.",
-            "Choose one small change from this section and apply it to a real example.",
-            "Record what changed, what remained difficult, and what should be tested next.",
-        ], "columns": [], "rows": [], "evidence_ids": []},
-        {"kind": "worksheet", "title": "Apply it", "body": "Complete the prompts before moving to the next section.", "items": [
-            "My current situation:",
-            "The specific step I will try:",
+    topic = blueprint.title.strip()
+    problem = blueprint.core_problem.strip()
+    outcome = blueprint.desired_outcome.strip()
+    audience = blueprint.target_audience.strip()
+    section_lower = section.title.lower()
+    purpose = section.purpose.strip()
+
+    def _prompt(label: str, focus: str) -> str:
+        return f"{label} for {focus}. Write one concrete example from your own {topic.lower()} work and note what you would change next."
+
+    # Give each common built-in section a different practical job. For custom
+    # outlines, the section purpose/components still drive the wording.
+    if any(word in section_lower for word in ("baseline", "start", "assess", "diagnos")):
+        steps = [
+            f"Describe your current {topic.lower()} routine in 3-5 sentences, including where {problem.lower()} shows up.",
+            f"List the two moments that make it hardest for you to move toward {outcome.lower()}.",
+            "Choose one small starting change that you can test without redesigning the whole routine.",
+        ]
+        worksheet = [
+            _prompt("Current baseline", topic),
+            "What is the biggest friction point I want to change first?",
+            "What small change will I test this week, and when will I test it?",
+            "What evidence will tell me whether the change helped?",
+        ]
+    elif any(word in section_lower for word in ("lesson", "learn", "guided", "method", "strategy")):
+        steps = [
+            f"Choose one part of your current approach that relates directly to {problem.lower()}.",
+            f"Apply the section's method to one real example and work toward {outcome.lower()}.",
+            "Write down the result, the remaining friction, and one adjustment to test next.",
+        ]
+        worksheet = [
+            "Which part of my current approach needs the most improvement?",
+            "What exact step will I apply to one real example?",
+            "What happened when I applied it?",
+            "What will I adjust before trying it again?",
+        ]
+    elif any(word in section_lower for word in ("review", "reflect", "progress", "check")):
+        steps = [
+            "Review one example you completed earlier in the product.",
+            f"Compare what you did with the intended outcome: {outcome}.",
+            "Identify one thing to keep, one thing to change, and one question to test next.",
+        ]
+        worksheet = [
+            "What worked better than expected?",
+            "Where did I still get stuck?",
+            "What will I keep doing?",
+            "What will I change in my next attempt?",
+        ]
+    elif any(word in section_lower for word in ("worksheet", "exercise", "practice", "activity")):
+        steps = [
+            f"Pick one real situation connected to {problem.lower()}.",
+            "Complete the exercise using specific details rather than general statements.",
+            f"Turn the result into one action that supports {outcome.lower()}.",
+        ]
+        worksheet = [
+            "My real situation or example:",
+            "The specific action I will take:",
+            "What I need before I can take that action:",
+            "What I learned after completing the exercise:",
+        ]
+    else:
+        steps = [
+            f"Read the section purpose and connect it to your current situation: {purpose}.",
+            f"Apply one idea to a real example related to {problem.lower()}.",
+            f"Record what changed and how it relates to {outcome.lower()}.",
+        ]
+        worksheet = [
+            "The real situation I will apply this to:",
+            "The specific step I will take:",
             "What I need to prepare:",
             "What I learned after trying it:",
-        ], "columns": [], "rows": [], "evidence_ids": []},
+        ]
+
+    blocks = [
+        {
+            "kind": "paragraph",
+            "title": section.title,
+            "body": f"This section is for {audience}. It focuses on {purpose} and connects the product's core problem—{problem}—to the intended outcome—{outcome}.",
+            "items": [],
+            "columns": [],
+            "rows": [],
+            "evidence_ids": [],
+        },
+        {
+            "kind": "steps",
+            "title": f"{section.title}: practical steps",
+            "body": f"Use these steps with one real example from your {topic.lower()}. Keep the result specific enough to review later.",
+            "items": steps,
+            "columns": [],
+            "rows": [],
+            "evidence_ids": [],
+        },
+        {
+            "kind": "worksheet",
+            "title": f"{section.title}: apply and reflect",
+            "body": f"Complete these prompts for your own {topic.lower()} before moving on.",
+            "items": worksheet,
+            "columns": [],
+            "rows": [],
+            "evidence_ids": [],
+        },
     ]
-    if evidence:
-        blocks.append({"kind": "reference", "title": "Research references", "body": "These are the supplied research records linked to this product hypothesis. Validate the original sources before publication.", "items": [], "columns": [], "rows": [], "evidence_ids":[e.evidence_id for e in evidence[:5]]})
-    return GeneratedSection(section_index=section_index, title=section.title, purpose=section.purpose, blocks=blocks)
+    if reference_material.strip():
+        blocks.append({
+            "kind": "reference",
+            "title": "Creator reference notes",
+            "body": "Review these creator-supplied notes as context for this product; verify important claims before publication.",
+            "items": [reference_material.strip()[:500]],
+            "columns": [],
+            "rows": [],
+            "evidence_ids": [],
+        })
+    elif evidence:
+        blocks.append({
+            "kind": "reference",
+            "title": "Research references",
+            "body": "These supplied research records are linked to the product hypothesis. Validate original sources before publication.",
+            "items": [],
+            "columns": [],
+            "rows": [],
+            "evidence_ids": [e.evidence_id for e in evidence[:5]],
+        })
+    return GeneratedSection(
+        section_index=section_index,
+        title=section.title,
+        purpose=section.purpose,
+        blocks=blocks,
+    )
 
 def generate_section_content(
     blueprint: ProductBlueprint,
@@ -104,7 +220,12 @@ def generate_section_content(
     model = model or os.getenv("PRODUCT_BUILDER_MODEL", "gpt-5-mini")
     try:
         if client is None and not (os.getenv("PRODUCT_BUILDER_API_KEY") or os.getenv("OPENAI_API_KEY")):
-            return _local_section_content(blueprint, section_index, references)
+            return _local_section_content(
+                blueprint,
+                section_index,
+                references,
+                reference_material=reference_material,
+            )
         if client is None:
             client = _provider_client()
     except BlueprintGenerationError as exc:
