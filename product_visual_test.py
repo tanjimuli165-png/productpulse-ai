@@ -220,8 +220,8 @@ class ProductVisualTests(unittest.TestCase):
         self.assertNotIn("Section visual</figcaption>", html)
         self.assertNotIn("text/html", html)
         self.assertNotIn("oversized</figcaption>", html)
-        self.assertLess(html.index("Cover visual</figcaption>"), html.index("SECTION 01"))
-        self.assertLess(html.index("Section visual</figcaption>"), html.index("Begin with one small step."))
+        self.assertLess(html.index('class="product-visual"'), html.index("SECTION 01"))
+        self.assertLess(html.index("SECTION 01"), html.index("Begin with one small step."))
 
     def test_visual_table_migration_does_not_change_existing_product_columns(self):
         with TemporaryDirectory() as directory:
