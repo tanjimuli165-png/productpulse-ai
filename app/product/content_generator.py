@@ -507,6 +507,8 @@ def _validate_content_grounding(
     section: BlueprintSection,
     generated: GeneratedSection,
     product_inputs: ProductInputs | None,
+    *,
+    section_index: int,
 ) -> None:
     """Reject provider output that is structurally valid but too generic for the saved product brief."""
     if product_inputs is None:
@@ -547,7 +549,7 @@ def _validate_content_grounding(
     # Creator material is optional and may be relevant only to selected sections.
     # Require one distinctive supplied-material term in the first section so the
     # provider cannot silently ignore a creator's custom brief from the start.
-    reference_matches = _matched_grounding_terms(reference_terms, generated_text) if section.section_index == 0 else set()
+    reference_matches = _matched_grounding_terms(reference_terms, generated_text) if section_index == 0 else set()
 
     missing: list[str] = []
     if product_terms and not product_matches:
@@ -558,7 +560,7 @@ def _validate_content_grounding(
         missing.append("the desired outcome")
     if section_focus_terms and not section_focus_matches:
         missing.append("the section purpose")
-    if section.section_index == 0 and reference_terms and not reference_matches:
+    if section_index == 0 and reference_terms and not reference_matches:
         missing.append("the creator-supplied reference material")
     if missing:
         raise ValueError(
@@ -708,7 +710,9 @@ def generate_section_content(
                 blocks=payload["blocks"],
             )
             _validate_component_contract(section, generated)
-            _validate_content_grounding(blueprint, section, generated, product_inputs)
+            _validate_content_grounding(
+            blueprint, section, generated, product_inputs, section_index=section_index
+        )
             used_ids = {evidence_id for block in generated.blocks for evidence_id in block.evidence_ids}
             unknown_ids = used_ids - allowed_ids
             if unknown_ids:
