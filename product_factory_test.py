@@ -208,6 +208,84 @@ class ProductFactoryTests(unittest.TestCase):
         self.assertEqual(len(request_body["approved_blueprint"]["outline"]), len(blueprint.outline))
         self.assertEqual(request_body["available_research_references"][0]["evidence_id"], "EV-0123456789AB")
 
+    def test_section_generation_passes_product_fit_context_to_provider(self):
+        payload = {
+            "blocks": [
+                {
+                    "kind": "steps",
+                    "title": "Plan meal decisions",
+                    "body": "Use a repeatable weekly meal plan to reduce decision load and keep grocery choices visible.",
+                    "items": ["Choose the meals for the week", "List the grocery items", "Record the next cooking action"],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": [],
+                },
+                {
+                    "kind": "reference",
+                    "title": "Research signal",
+                    "body": "This source contains the linked problem language.",
+                    "items": [],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": ["EV-0123456789AB"],
+                },
+            ]
+        }
+        fake = FakeClient(json.dumps(payload))
+        blueprint = ProductBlueprint.model_validate(sample_blueprint())
+        inputs = ProductInputs(
+            product_title="Meal Prep Workbook",
+            audience="People planning meals",
+            problem="Weekly meal planning takes too much time.",
+            promise="Create a repeatable weekly meal-prep routine.",
+            differentiation=["Includes a practical grocery decision workflow."],
+            validation_steps=["Test the workflow with target readers."],
+            research_backed=True,
+            market_context=["Etsy listing: weekly meal planner workbook"],
+        )
+        evidence = [EvidenceReference(
+            evidence_id="EV-0123456789AB", source_title="Meal planning discussion",
+            source_type="Reddit", customer_language="Weekly planning takes time.",
+            url="https://example.test/meal-planning",
+        )]
+        result = generate_section_content(
+            blueprint, 1, evidence, client=fake, model="test-model", product_inputs=inputs
+        )
+        self.assertEqual(result.section_index, 1)
+        request_body = json.loads(fake.chat.completions.request["messages"][1]["content"])
+        self.assertTrue(request_body["product_fit_context"]["research_backed"])
+        self.assertEqual(request_body["product_fit_context"]["differentiation"], inputs.differentiation)
+        self.assertEqual(request_body["product_fit_context"]["validation_steps"], inputs.validation_steps)
+        self.assertEqual(request_body["product_fit_context"]["market_context"], inputs.market_context)
+
+    def test_section_generation_rejects_provider_output_that_is_too_generic(self):
+        payload = {
+            "blocks": [
+                {
+                    "kind": "steps",
+                    "title": "General steps",
+                    "body": "Follow a simple process and review what happened before repeating it.",
+                    "items": ["Start with the task", "Review the result", "Choose what to do next"],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": [],
+                }
+            ]
+        }
+        fake = FakeClient(json.dumps(payload))
+        blueprint = ProductBlueprint.model_validate(sample_blueprint())
+        inputs = ProductInputs(
+            product_title="Meal Prep Workbook",
+            audience="People planning meals",
+            problem="Weekly meal planning takes too much time.",
+            promise="Create a repeatable weekly meal-prep routine.",
+        )
+        with self.assertRaises(ContentGenerationError) as ctx:
+            generate_section_content(
+                blueprint, 1, client=fake, model="test-model", product_inputs=inputs
+            )
+        self.assertIn("grounding check failed", str(ctx.exception))
+
     def test_content_generation_rejects_citations_not_in_supplied_evidence(self):
         payload = {"blocks": [{
             "kind": "reference", "title": "Unsupported source", "body": "This source was not provided.",
