@@ -25,6 +25,7 @@ from app.product.visual_generator import (
     VisualGenerationError,
     create_visual_asset,
     sanitize_uploaded_image,
+    suggest_visual_ideas,
 )
 
 
@@ -1116,17 +1117,20 @@ def render_product_generator(
                     st.write(f"**v{version['version_number']}** · {version['created_at']} · {version['change_summary']}")
         st.divider()
         st.subheader("Visual / photo plan")
-        st.caption("The builder flags places where a visual may help. A photo is optional unless your topic specifically depends on real-world images. You can create a simple icon/shape/diagram or upload your own PNG/JPEG later in Phase 5.")
-        visual_candidates = []
-        for section in blueprint.outline:
-            components = {item.lower() for item in section.components}
-            if components & {"steps", "example", "worksheet", "table", "checklist", "action_steps"}:
-                visual_candidates.append(section)
-        if visual_candidates:
-            for section in visual_candidates:
-                st.write(f"- **{section.title}** — consider a diagram, example image, checklist graphic, or your own photo if it adds real value.")
+        st.caption("The builder suggests only a few visuals that can improve comprehension. It does not require a visual when one is not useful, and it does not invent facts or photo requirements.")
+        ideas = suggest_visual_ideas(
+            blueprint.product_type,
+            blueprint.core_problem or blueprint.title,
+            [section.model_dump(mode="json") for section in blueprint.outline],
+        )
+        if ideas:
+            for idea in ideas:
+                with st.container(border=True):
+                    st.markdown(f"**{idea['title']}** · `{idea['placement']}`")
+                    st.write(idea["reason"])
+                    st.caption(f"Visual brief: {idea['brief']}")
         else:
-            st.write("- No section is strongly flagged for a visual. You can still add a cover visual or upload a useful image in Phase 5.")
+            st.write("No strong visual need was identified. Keep the product text-first unless a real image or diagram adds clear value.")
         _render_content_generation(product_store, user_id, product_id, inputs, blueprint, existing)
     if existing:
         st.caption(f"Saved product status: **{existing['status']}** · Last updated {existing['updated_at']}")
