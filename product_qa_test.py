@@ -303,7 +303,7 @@ class ProductQATests(unittest.TestCase):
         )
 
     def test_fingerprint_changes_when_product_inputs_change(self):
-        inputs_a = inputs()
+        inputs_a = sample_inputs()
         inputs_b = inputs_a.model_copy(update={"promise": inputs_a.promise + " Add a concrete weekly review step."})
 
         first = qa_snapshot_fingerprint(
