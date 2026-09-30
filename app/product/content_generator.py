@@ -71,130 +71,146 @@ def _local_section_content(
     evidence: list[EvidenceReference],
     reference_material: str = "",
 ) -> GeneratedSection:
-    """Deterministic no-API-key content grounded in the actual product and section."""
+    """Deterministic no-API-key content that follows the section's planned components."""
     section = blueprint.outline[section_index]
     topic = blueprint.title.strip()
     problem = blueprint.core_problem.strip()
     outcome = blueprint.desired_outcome.strip()
     audience = blueprint.target_audience.strip()
-    section_lower = section.title.lower()
+    title_lower = section.title.lower()
+    planned = [str(kind).strip().lower() for kind in section.components]
     purpose = section.purpose.strip()
 
-    def _prompt(label: str, focus: str) -> str:
-        return f"{label} for {focus}. Write one concrete example from your own {topic.lower()} work and note what you would change next."
+    def has(*kinds: str) -> bool:
+        return any(kind in planned for kind in kinds)
 
-    # Give each common built-in section a different practical job. For custom
-    # outlines, the section purpose/components still drive the wording.
-    if any(word in section_lower for word in ("baseline", "start", "assess", "diagnos")):
-        steps = [
-            f"Describe your current {topic.lower()} routine in 3-5 sentences, including where {problem.lower()} shows up.",
-            f"List the two moments that make it hardest for you to move toward {outcome.lower()}.",
-            "Choose one small starting change that you can test without redesigning the whole routine.",
-        ]
-        worksheet = [
-            _prompt("Current baseline", topic),
-            "What is the biggest friction point I want to change first?",
-            "What small change will I test this week, and when will I test it?",
-            "What evidence will tell me whether the change helped?",
-        ]
-    elif any(word in section_lower for word in ("lesson", "learn", "guided", "method", "strategy")):
-        steps = [
-            f"Choose one part of your current approach that relates directly to {problem.lower()}.",
-            f"Apply the section's method to one real example and work toward {outcome.lower()}.",
-            "Write down the result, the remaining friction, and one adjustment to test next.",
-        ]
-        worksheet = [
-            "Which part of my current approach needs the most improvement?",
-            "What exact step will I apply to one real example?",
-            "What happened when I applied it?",
-            "What will I adjust before trying it again?",
-        ]
-    elif any(word in section_lower for word in ("review", "reflect", "progress", "check")):
-        steps = [
-            "Review one example you completed earlier in the product.",
-            f"Compare what you did with the intended outcome: {outcome}.",
-            "Identify one thing to keep, one thing to change, and one question to test next.",
-        ]
-        worksheet = [
-            "What worked better than expected?",
-            "Where did I still get stuck?",
-            "What will I keep doing?",
-            "What will I change in my next attempt?",
-        ]
-    elif any(word in section_lower for word in ("worksheet", "exercise", "practice", "activity")):
-        steps = [
-            f"Pick one real situation connected to {problem.lower()}.",
-            "Complete the exercise using specific details rather than general statements.",
-            f"Turn the result into one action that supports {outcome.lower()}.",
-        ]
-        worksheet = [
-            "My real situation or example:",
-            "The specific action I will take:",
-            "What I need before I can take that action:",
-            "What I learned after completing the exercise:",
-        ]
-    else:
-        steps = [
-            f"Read the section purpose and connect it to your current situation: {purpose}.",
-            f"Apply one idea to a real example related to {problem.lower()}.",
-            f"Record what changed and how it relates to {outcome.lower()}.",
-        ]
-        worksheet = [
-            "The real situation I will apply this to:",
-            "The specific step I will take:",
-            "What I need to prepare:",
-            "What I learned after trying it:",
-        ]
+    def block(kind: str, title: str, body: str = "", *, items=None, columns=None, rows=None, evidence_ids=None):
+        return {
+            "kind": kind,
+            "title": title,
+            "body": body,
+            "items": items or [],
+            "columns": columns or [],
+            "rows": rows or [],
+            "evidence_ids": evidence_ids or [],
+        }
 
-    blocks = [
-        {
-            "kind": "paragraph",
-            "title": section.title,
-            "body": f"This section is for {audience}. It focuses on {purpose} and connects the product's core problem—{problem}—to the intended outcome—{outcome}.",
-            "items": [],
-            "columns": [],
-            "rows": [],
-            "evidence_ids": [],
-        },
-        {
-            "kind": "steps",
-            "title": f"{section.title}: practical steps",
-            "body": f"Use these steps with one real example from your {topic.lower()}. Keep the result specific enough to review later.",
-            "items": steps,
-            "columns": [],
-            "rows": [],
-            "evidence_ids": [],
-        },
-        {
-            "kind": "worksheet",
-            "title": f"{section.title}: apply and reflect",
-            "body": f"Complete these prompts for your own {topic.lower()} before moving on.",
-            "items": worksheet,
-            "columns": [],
-            "rows": [],
-            "evidence_ids": [],
-        },
-    ]
-    if reference_material.strip():
-        blocks.append({
-            "kind": "reference",
-            "title": "Creator reference notes",
-            "body": "Review these creator-supplied notes as context for this product; verify important claims before publication.",
-            "items": [reference_material.strip()[:500]],
-            "columns": [],
-            "rows": [],
-            "evidence_ids": [],
-        })
-    elif evidence:
-        blocks.append({
-            "kind": "reference",
-            "title": "Research references",
-            "body": "These supplied research records are linked to the product hypothesis. Validate original sources before publication.",
-            "items": [],
-            "columns": [],
-            "rows": [],
-            "evidence_ids": [e.evidence_id for e in evidence[:5]],
-        })
+    blocks: list[dict] = []
+
+    # Build only the block types requested by this format's blueprint section.
+    # This is the key safeguard against every product becoming the same
+    # paragraph + steps + worksheet document.
+    if has("paragraph"):
+        blocks.append(block(
+            "paragraph",
+            section.title,
+            f"This section is for {audience}. It focuses on {purpose} and applies the product to the problem of {problem}, with the intended outcome of {outcome}.",
+        ))
+
+    if has("steps", "action_steps"):
+        kind = "action_steps" if has("action_steps") and not has("steps") else "steps"
+        items = [
+            f"Choose one real situation where {problem.lower()} appears.",
+            f"Apply the {section.title.lower()} approach to that situation and work toward {outcome.lower()}.",
+            "Record what happened, what remains unclear, and the next adjustment to test.",
+        ]
+        blocks.append(block(kind, f"{section.title}: practical steps", 
+                            f"Use these steps with one real example from your {topic.lower()}.", items=items))
+
+    if has("checklist"):
+        blocks.append(block(
+            "checklist",
+            f"{section.title}: completion checklist",
+            "Mark each item only when it is actually completed.",
+            items=[
+                f"I used a real example related to {problem.lower()}.",
+                f"I completed the {section.title.lower()} task rather than only reading it.",
+                f"I recorded a concrete next action connected to {outcome.lower()}.",
+            ],
+        ))
+
+    if has("example"):
+        blocks.append(block(
+            "example",
+            f"{section.title}: illustrative example",
+            f"Hypothetical example: a reader working on {topic.lower()} notices that {problem.lower()} is getting in the way. They apply the section approach, record what changes, and decide what to test next. This example is illustrative, not a claim about actual results.",
+        ))
+
+    if has("exercise"):
+        blocks.append(block(
+            "exercise",
+            f"{section.title}: practice exercise",
+            f"Use one real situation connected to {problem.lower()} and complete the exercise before moving on.",
+            items=[
+                "Describe the situation with specific details.",
+                f"Apply the section method to move toward {outcome.lower()}.",
+                "Write down the result and one adjustment for another attempt.",
+            ],
+        ))
+
+    if has("worksheet"):
+        blocks.append(block(
+            "worksheet",
+            f"{section.title}: working page",
+            f"Complete these prompts for your own {topic.lower()}.",
+            items=[
+                "My real situation or starting point:",
+                "The specific action I will take:",
+                "What I need to prepare:",
+                "What I learned or need to test next:",
+            ],
+        ))
+
+    if has("reflection"):
+        blocks.append(block(
+            "reflection",
+            f"{section.title}: reflection",
+            "Use the prompts to review your work rather than simply restating the section.",
+            items=[
+                "What worked or became clearer?",
+                "Where did I still experience friction?",
+                "What will I keep, change, or test next?",
+            ],
+        ))
+
+    if has("table"):
+        blocks.append(block(
+            "table",
+            f"{section.title}: planning table",
+            "Use the table with your own product-specific details.",
+            columns=["Item", "Current state", "Next action"],
+            rows=[
+                [section.title, "What is true now?", "What will I do next?"],
+                [problem[:80], "What friction remains?", "What will I test?"],
+                [outcome[:80], "What progress would look like?", "When will I review it?"],
+            ],
+        ))
+
+    if has("reference"):
+        if reference_material.strip():
+            blocks.append(block(
+                "reference",
+                "Creator reference notes",
+                "Review these creator-supplied notes as context and verify important claims before publication.",
+                items=[reference_material.strip()[:500]],
+            ))
+        elif evidence:
+            blocks.append(block(
+                "reference",
+                "Research references",
+                "These supplied records support the product hypothesis; verify original sources before publication.",
+                evidence_ids=[e.evidence_id for e in evidence[:5]],
+            ))
+
+    # Custom section components may be sparse. Give the user a useful, section-
+    # specific paragraph rather than silently inventing unrelated block types.
+    if not blocks:
+        blocks.append(block(
+            "paragraph",
+            section.title,
+            f"Work through this custom section using its stated purpose: {purpose}. Apply it to {topic.lower()}, keep claims grounded in the supplied material, and record what you need to test next.",
+        ))
+
     return GeneratedSection(
         section_index=section_index,
         title=section.title,
