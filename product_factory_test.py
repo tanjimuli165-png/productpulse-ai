@@ -564,6 +564,19 @@ class ProductFactoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ContentGenerationError, "Section content generation failed"):
             generate_section_content(blueprint, 0, [], client=FakeClient(json.dumps(payload)))
 
+    def test_offline_generation_is_subject_to_product_grounding_validation(self):
+        blueprint = ProductBlueprint.model_validate(sample_blueprint())
+        inputs = ProductInputs(
+            product_title="Meal Prep Workbook",
+            audience="People planning meals",
+            problem="Weekly meal planning takes too much time.",
+            promise="Create a repeatable weekly meal-prep routine.",
+        )
+        with self.assertRaises(ContentGenerationError):
+            generate_section_content(
+                blueprint, 0, [], client=None, product_inputs=inputs
+            )
+
     def test_missing_provider_credentials_returns_content_setup_error(self):
         import os
         previous_key = os.environ.pop("OPENAI_API_KEY", None)
