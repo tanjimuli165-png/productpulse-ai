@@ -615,52 +615,66 @@ def generate_section_content(
             "grounding_rule": "Use these fields to keep the section product-specific. Do not copy marketplace listing language into reader-facing content unless directly relevant and supported.",
         },
     }
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": CONTENT_SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(request_data, ensure_ascii=False)},
-            ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "product_section_content",
-                    "strict": True,
-                    "schema": SECTION_CONTENT_JSON_SCHEMA,
+
+    grounding_feedback = ""
+    max_attempts = 2
+    for attempt in range(max_attempts):
+        request_payload = dict(request_data)
+        if grounding_feedback:
+            request_payload["generation_feedback"] = {
+                "previous_validation_error": grounding_feedback,
+                "instruction": "Regenerate the same section with concrete product-specific terms, decisions, examples, or actions. Keep every planned component, and make sure the approved problem and desired outcome are represented across the section.",
+            }
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": CONTENT_SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(request_payload, ensure_ascii=False)},
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "product_section_content",
+                        "strict": True,
+                        "schema": SECTION_CONTENT_JSON_SCHEMA,
+                    },
                 },
-            },
-            **_token_limit(model),
-        )
-        raw = response.choices[0].message.content
-        if not raw:
-            raise ValueError("The provider returned an empty section.")
-        payload = json.loads(raw)
-        generated = GeneratedSection(
-            section_index=section_index,
-            title=section.title,
-            purpose=section.purpose,
-            blocks=payload["blocks"],
-        )
-        _validate_component_contract(section, generated)
-        _validate_content_grounding(blueprint, section, generated, product_inputs)
-        used_ids = {evidence_id for block in generated.blocks for evidence_id in block.evidence_ids}
-        unknown_ids = used_ids - allowed_ids
-        if unknown_ids:
-            raise ValueError("Generated content cited a source that was not supplied.")
-        return generated
-    except ContentGenerationError:
-        raise
-    except ValueError as exc:
-        detail = str(exc)
-        if detail.startswith("Generated content grounding check failed:"):
-            raise ContentGenerationError(detail) from exc
-        name = type(exc).__name__
-        raise ContentGenerationError(
-            f"Section content generation failed ({name}). Check the configured provider/model and try again. Previously saved sections are preserved."
-        ) from exc
-    except Exception as exc:
-        name = type(exc).__name__
-        raise ContentGenerationError(
-            f"Section content generation failed ({name}). Check the configured provider/model and try again. Previously saved sections are preserved."
-        ) from exc
+                **_token_limit(model),
+            )
+            raw = response.choices[0].message.content
+            if not raw:
+                raise ValueError("The provider returned an empty section.")
+            payload = json.loads(raw)
+            generated = GeneratedSection(
+                section_index=section_index,
+                title=section.title,
+                purpose=section.purpose,
+                blocks=payload["blocks"],
+            )
+            _validate_component_contract(section, generated)
+            _validate_content_grounding(blueprint, section, generated, product_inputs)
+            used_ids = {evidence_id for block in generated.blocks for evidence_id in block.evidence_ids}
+            unknown_ids = used_ids - allowed_ids
+            if unknown_ids:
+                raise ValueError("Generated content cited a source that was not supplied.")
+            return generated
+        except ContentGenerationError:
+            raise
+        except ValueError as exc:
+            detail = str(exc)
+            if detail.startswith("Generated content grounding check failed:") and attempt < max_attempts - 1:
+                grounding_feedback = detail
+                continue
+            if detail.startswith("Generated content grounding check failed:"):
+                raise ContentGenerationError(detail) from exc
+            name = type(exc).__name__
+            raise ContentGenerationError(
+                f"Section content generation failed ({name}). Check the configured provider/model and try again. Previously saved sections are preserved."
+            ) from exc
+        except Exception as exc:
+            name = type(exc).__name__
+            raise ContentGenerationError(
+                f"Section content generation failed ({name}). Check the configured provider/model and try again. Previously saved sections are preserved."
+            ) from exc
+
