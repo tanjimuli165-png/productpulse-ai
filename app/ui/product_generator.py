@@ -59,8 +59,14 @@ def build_product_inputs(report: Report, opportunity: Opportunity) -> ProductInp
                 source_title=item.title or "Untitled source",
                 source_type=item.source,
                 customer_language=problem.problem,
+                source_excerpt=item.text[:1200],
                 url=item.url,
             ))
+    supplied_material = ""
+    if report.scoring_version == "manual_topic_v1":
+        supplied_material = "\n\n".join(
+            item.text[:12000] for item in source_items if item.text
+        )[:50000]
     return ProductInputs(
         product_title=opportunity.name,
         audience=opportunity.audience,
@@ -70,6 +76,7 @@ def build_product_inputs(report: Report, opportunity: Opportunity) -> ProductInp
         differentiation=opportunity.differentiation,
         evidence=evidence_refs,
         validation_steps=opportunity.next_steps,
+        reference_material=supplied_material,
         research_backed=report.scoring_version != "manual_topic_v1",
         market_context=list(getattr(opportunity, "market_context", []))[:12],
     )
