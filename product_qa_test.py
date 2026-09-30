@@ -196,8 +196,8 @@ class ProductQATests(unittest.TestCase):
         )]
         result = self.run_qa(blueprint, content)
         checks = self.checks_by_name(result)
-        self.assertEqual(checks["Researched-problem alignment"]["status"], "FLAG")
-        self.assertEqual(checks["Clear-outcome wording"]["status"], "FLAG")
+        self.assertEqual(checks["Problem concept coverage"]["status"], "REVIEW")
+        self.assertEqual(checks["Outcome concept coverage"]["status"], "REVIEW")
         self.assertEqual(checks["Actionable components"]["status"], "FLAG")
         self.assertEqual(checks["Structure for selected product type"]["status"], "FLAG")
 
