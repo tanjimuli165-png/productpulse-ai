@@ -794,10 +794,16 @@ def export_saved_product_pdf(product_id: str, user_id: str, store: ProductStore)
         latest_qa_is_current = bool(latest_qa and latest_qa.get("snapshot_fingerprint") == current_fingerprint)
         if qa_history_unavailable:
             raise ProductPdfExportError("Final QA history is unavailable. Run QA again before exporting the product PDF.")
+        # Automated QA is the content/preview gate. The final verification
+        # workflow owns actual PDF assembly and rendering checks, so Phase 7
+        # must not require a PDF-rendering result that it intentionally does
+        # not run.
+        if qa_history_unavailable:
+            raise ProductPdfExportError("Automated QA history is unavailable. Run Automated QA again before final verification.")
         if latest_qa_status != "PASS" or not latest_qa_is_current:
             if latest_qa_status != "PASS":
-                raise ProductPdfExportError("Final QA must PASS before PDF export. Run automated QA, fix any flagged issues, save the changes, and run QA again.")
-            raise ProductPdfExportError("The saved QA result is stale for the current product snapshot. Run automated QA again before exporting.")
+                raise ProductPdfExportError("Automated QA must PASS before final verification. Fix the flagged issues, save the changes, and run QA again.")
+            raise ProductPdfExportError("The saved Automated QA result is stale for the current product snapshot. Run Automated QA again before final verification.")
         pdf_bytes, page_count, visual_count, visual_preflight = _assemble_pdf(
             blueprint=blueprint,
             content=content,
