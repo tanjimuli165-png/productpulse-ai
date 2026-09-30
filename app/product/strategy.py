@@ -16,15 +16,15 @@ class BlueprintGenerationError(RuntimeError):
 BLUEPRINT_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "title": {"type": "string"},
-        "subtitle": {"type": "string"},
-        "target_audience": {"type": "string"},
-        "core_problem": {"type": "string"},
-        "desired_outcome": {"type": "string"},
-        "promise": {"type": "string"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 160},
+        "subtitle": {"type": "string", "minLength": 1, "maxLength": 260},
+        "target_audience": {"type": "string", "minLength": 1, "maxLength": 600},
+        "core_problem": {"type": "string", "minLength": 1, "maxLength": 1200},
+        "desired_outcome": {"type": "string", "minLength": 1, "maxLength": 600},
+        "promise": {"type": "string", "minLength": 1, "maxLength": 900},
         "product_type": {"type": "string", "enum": PRODUCT_TYPES},
         "recommended_types": {"type": "array", "items": {"type": "string", "enum": PRODUCT_TYPES}, "minItems": 1, "maxItems": 3},
-        "recommendation_reason": {"type": "string"},
+        "recommendation_reason": {"type": "string", "minLength": 1, "maxLength": 700},
         "outline": {
             "type": "array",
             "minItems": 3,
@@ -32,8 +32,8 @@ BLUEPRINT_JSON_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "title": {"type": "string"},
-                    "purpose": {"type": "string"},
+                    "title": {"type": "string", "minLength": 1, "maxLength": 120},
+                    "purpose": {"type": "string", "minLength": 1, "maxLength": 500},
                     "components": {"type": "array", "items": {"type": "string"}, "maxItems": 12},
                 },
                 "required": ["title", "purpose", "components"],
@@ -47,7 +47,7 @@ BLUEPRINT_JSON_SCHEMA: dict[str, Any] = {
         "examples": {"type": "array", "items": {"type": "string"}, "maxItems": 15},
         "templates": {"type": "array", "items": {"type": "string"}, "maxItems": 15},
         "bonuses": {"type": "array", "items": {"type": "string"}, "maxItems": 10},
-        "design_direction": {"type": "string"},
+        "design_direction": {"type": "string", "minLength": 1, "maxLength": 800},
     },
     "required": [
         "title", "subtitle", "target_audience", "core_problem", "desired_outcome", "promise",
