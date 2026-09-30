@@ -216,8 +216,8 @@ class ProductVisualTests(unittest.TestCase):
             ],
         )
         self.assertIn("data:image/svg+xml;base64,", html)
-        self.assertIn("Cover visual</figcaption>", html)
-        self.assertIn("Section visual</figcaption>", html)
+        self.assertNotIn("Cover visual</figcaption>", html)
+        self.assertNotIn("Section visual</figcaption>", html)
         self.assertNotIn("text/html", html)
         self.assertNotIn("oversized</figcaption>", html)
         self.assertLess(html.index("Cover visual</figcaption>"), html.index("SECTION 01"))
