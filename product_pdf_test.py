@@ -206,7 +206,7 @@ class ProductPdfExportTests(unittest.TestCase):
         self.assertEqual(result.template_name, "Modern Business")
         self.assertEqual(result.page_size_label, "US Letter")
         self.assertEqual(result.included_visual_count, 2)
-        self.assertGreaterEqual(result.page_count, 5)  # cover, contents, and three section starts
+        self.assertGreaterEqual(result.page_count, 3)  # cover, contents, and compacted section content
         self.assertEqual(result.page_count, len(reader.pages))
         self.assertIn("Weekly Client Work Workbook", extracted)
         self.assertIn("Contents", extracted)
