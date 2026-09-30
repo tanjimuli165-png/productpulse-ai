@@ -239,7 +239,9 @@ class ProductFactoryTests(unittest.TestCase):
             ]
         }
         fake = FakeClient(json.dumps(payload))
-        blueprint = ProductBlueprint.model_validate(sample_blueprint())
+        blueprint_data = sample_blueprint()
+        blueprint_data["outline"][0]["components"].append("reference")
+        blueprint = ProductBlueprint.model_validate(blueprint_data)
         inputs = ProductInputs(
             product_title="Meal Prep Workbook",
             audience="People planning meals",
