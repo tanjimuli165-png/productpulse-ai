@@ -327,6 +327,45 @@ class ProductFactoryTests(unittest.TestCase):
         self.assertIn("generation_feedback", second_body)
         self.assertIn("grounding check failed", second_body["generation_feedback"]["previous_validation_error"])
 
+    def test_section_generation_rejects_first_section_that_ignores_creator_reference_material(self):
+        payload = {
+            "blocks": [
+                {
+                    "kind": "paragraph",
+                    "title": "General planning context",
+                    "body": "Use a weekly meal planning routine to reduce time and move toward a repeatable weekly routine.",
+                    "items": [],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": [],
+                },
+                {
+                    "kind": "worksheet",
+                    "title": "Weekly planning worksheet",
+                    "body": "Record the current planning situation and the next routine you will test.",
+                    "items": ["Current situation:", "Next action:"],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": [],
+                },
+            ]
+        }
+        fake = FakeClient(json.dumps(payload))
+        blueprint = ProductBlueprint.model_validate(sample_blueprint())
+        inputs = ProductInputs(
+            product_title="Meal Prep Workbook",
+            audience="People planning meals",
+            problem="Weekly meal planning takes too much time.",
+            promise="Create a repeatable weekly meal-prep routine.",
+            reference_material="Creator note: batch-cooking three staple proteins on Sunday reduces weekday prep decisions.",
+        )
+        with self.assertRaises(ContentGenerationError) as ctx:
+            generate_section_content(
+                blueprint, 0, client=fake, model="test-model", product_inputs=inputs
+            )
+        self.assertIn("creator-supplied reference material", str(ctx.exception))
+
+
     def test_section_generation_rejects_output_without_product_topic(self):
         payload = {
             "blocks": [
