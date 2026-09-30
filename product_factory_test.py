@@ -310,7 +310,7 @@ class ProductFactoryTests(unittest.TestCase):
                 },
             ]
         }
-        fake = FakeClient(json.dumps([json.dumps(bad_payload), json.dumps(good_payload)]))
+        fake = FakeClient([json.dumps(bad_payload), json.dumps(good_payload)])
         blueprint = ProductBlueprint.model_validate(sample_blueprint())
         inputs = ProductInputs(
             product_title="Meal Prep Workbook",
