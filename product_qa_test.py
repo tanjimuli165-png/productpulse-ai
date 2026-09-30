@@ -302,6 +302,26 @@ class ProductQATests(unittest.TestCase):
             hashlib.sha256(output.getvalue()).hexdigest(),
         )
 
+    def test_fingerprint_changes_when_product_inputs_change(self):
+        inputs_a = inputs()
+        inputs_b = inputs_a.model_copy(update={"promise": inputs_a.promise + " Add a concrete weekly review step."})
+
+        first = qa_snapshot_fingerprint(
+            blueprint(),
+            content(),
+            inputs=inputs_a,
+            design={"template_id": "minimal_professional", "page_size": "letter"},
+        )
+        second = qa_snapshot_fingerprint(
+            blueprint(),
+            content(),
+            inputs=inputs_b,
+            design={"template_id": "minimal_professional", "page_size": "letter"},
+        )
+
+        self.assertNotEqual(first, second)
+
+
     def test_fingerprint_changes_when_content_design_visual_or_preview_changes(self):
         blueprint, content = sample_blueprint(), sample_content()
         base = qa_snapshot_fingerprint(blueprint, content, design={"template_id": "minimal_professional", "page_size": "letter"})
