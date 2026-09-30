@@ -377,6 +377,32 @@ def _render_visual_engine(
     locations = {"cover": "Cover"}
     locations.update({f"section:{section.section_index}": f"Section {section.section_index + 1}: {section.title}" for section in content.sections})
 
+    st.markdown("**Suggested visuals for this product**")
+    st.caption("Use a suggestion to prefill the visual creator. Nothing is created or saved until you press Create and save visual.")
+    ideas = suggest_visual_ideas(
+        blueprint.product_type,
+        blueprint.core_problem or blueprint.title,
+        [section.model_dump(mode="json") for section in blueprint.outline],
+    )
+    for index, idea in enumerate(ideas[:3]):
+        cols = st.columns([5, 1])
+        with cols[0]:
+            st.write(f"**{idea['title']}** · {idea['placement']}")
+            st.caption(idea["reason"])
+        if cols[1].button("Use idea", key=f"product_{product_id}_visual_idea_{index}"):
+            placement = "cover" if idea["placement"].lower() == "cover" else next(
+                (f"section:{section.section_index}" for section in content.sections if section.title == idea["placement"]),
+                "cover",
+            )
+            title_lower = idea["title"].lower()
+            visual_kind = "diagram" if any(word in title_lower for word in ("map", "flow", "roadmap", "loop", "overview", "anatomy")) else "icon"
+            st.session_state[f"product_{product_id}_visual_type"] = visual_kind
+            st.session_state[f"product_{product_id}_visual_title"] = idea["title"]
+            st.session_state[f"product_{product_id}_visual_placement"] = placement
+            st.session_state[f"product_{product_id}_visual_steps"] = "Start\nWork\nReview" if visual_kind == "diagram" else ""
+            st.session_state[f"product_{product_id}_visual_icon"] = "target" if any(word in title_lower for word in ("goal", "priority", "progress", "roadmap")) else "check"
+            st.rerun()
+
     create_tab, upload_tab, saved_tab = st.tabs(["Create a visual", "Upload an image", "Saved visuals"])
     with create_tab:
         visual_kind = st.selectbox(
