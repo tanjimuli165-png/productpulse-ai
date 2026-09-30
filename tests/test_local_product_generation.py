@@ -70,10 +70,12 @@ def test_meal_prep_fallback_is_specific_per_section():
     sections = [generate_section_content(blueprint, i) for i in range(len(blueprint.outline))]
     section_text = {
         section.title: " ".join(
-            [block.title, block.body, *block.items, *[" ".join(row) for row in block.rows]]
+            " ".join(
+                [block.title, block.body, *block.items, *[" ".join(row) for row in block.rows]]
+            )
+            for block in section.blocks
         ).lower()
         for section in sections
-        for block in section.blocks
     }
     assert "grocery" in section_text["Baseline"]
     assert "recipe" in section_text["Guided Lessons"]
