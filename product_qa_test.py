@@ -1,6 +1,7 @@
 import hashlib
 import json
 import unittest
+from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
