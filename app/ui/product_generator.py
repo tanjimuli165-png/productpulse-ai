@@ -399,7 +399,35 @@ def _render_visual_engine(
             st.session_state[f"product_{product_id}_visual_type"] = visual_kind
             st.session_state[f"product_{product_id}_visual_title"] = idea["title"]
             st.session_state[f"product_{product_id}_visual_placement"] = placement
-            st.session_state[f"product_{product_id}_visual_steps"] = "Start\nWork\nReview" if visual_kind == "diagram" else ""
+            if visual_kind == "diagram":
+                matched_section = next(
+                    (section for section in content.sections if section.title == idea["placement"]),
+                    None,
+                )
+                component_labels = {
+                    "paragraph": "Understand",
+                    "steps": "Follow steps",
+                    "action_steps": "Take action",
+                    "example": "Review example",
+                    "exercise": "Practice",
+                    "worksheet": "Write",
+                    "reflection": "Reflect",
+                    "table": "Track",
+                    "checklist": "Check",
+                    "reference": "Review source",
+                }
+                derived_steps = []
+                if matched_section is not None:
+                    for component in matched_section.components:
+                        label = component_labels.get(str(component).strip().lower())
+                        if label and label not in derived_steps:
+                            derived_steps.append(label)
+                derived_steps = derived_steps[:5]
+                if len(derived_steps) < 2:
+                    derived_steps = ["Start", "Work", "Review"]
+                st.session_state[f"product_{product_id}_visual_steps"] = "\n".join(derived_steps)
+            else:
+                st.session_state[f"product_{product_id}_visual_steps"] = ""
             st.session_state[f"product_{product_id}_visual_icon"] = "target" if any(word in title_lower for word in ("goal", "priority", "progress", "roadmap")) else "check"
             st.rerun()
 
