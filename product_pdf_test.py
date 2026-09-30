@@ -143,6 +143,32 @@ def tiny_png() -> bytes:
     return output.getvalue()
 
 
+def save_pass_qa(store, product_id, user_id, blueprint_value, content_value, inputs_value, *, template_id, page_size, assets):
+    preview = render_product_html(
+        content_value,
+        template_id,
+        page_size,
+        subtitle=content_value.subtitle,
+        product_type=blueprint_value.product_type,
+        audience=blueprint_value.target_audience,
+        evidence=inputs_value.evidence,
+        visual_assets=assets,
+    )
+    fingerprint = qa_snapshot_fingerprint(
+        blueprint_value,
+        content_value,
+        design={"template_id": template_id, "page_size": page_size},
+        visual_assets=assets,
+        preview_html=preview,
+    )
+    store.save_qa_run(
+        product_id=product_id,
+        user_id=user_id,
+        snapshot_fingerprint=fingerprint,
+        result_payload={"status": "PASS", "checks": [{"name": "Fixture QA", "status": "PASS"}]},
+    )
+
+
 class ProductPdfExportTests(unittest.TestCase):
     def setUp(self):
         self.directory = TemporaryDirectory()
@@ -165,6 +191,11 @@ class ProductPdfExportTests(unittest.TestCase):
             title="Weekly workbook image", filename="weekly.png", mime_type="image/png",
             placement="section:0", metadata={"generator": "validated_upload"}, content=png,
         )
+        save_pass_qa(
+            self.store, "private-product", "owner-a", self.bp, self.content, self.product_inputs,
+            template_id="modern_business", page_size="letter",
+            assets=self.store.get_visual_assets("private-product", "owner-a"),
+        )
 
         result = export_saved_product_pdf("private-product", "owner-a", self.store)
         reader = PdfReader(BytesIO(result.pdf_bytes), strict=True)
@@ -185,7 +216,7 @@ class ProductPdfExportTests(unittest.TestCase):
         self.assertIn("EV-123456789ABC", extracted)
         self.assertIn("Opportunity hypothesis", extracted)
         self.assertTrue(any(len(page.images) for page in reader.pages))
-        self.assertIsNone(result.latest_qa_status)
+        self.assertEqual(result.latest_qa_status, "PASS")
         self.assertTrue(any("not a visual" in item for item in result.limitations))
         self.assertFalse(Path(self.directory.name, result.filename).exists())
 
@@ -219,9 +250,8 @@ class ProductPdfExportTests(unittest.TestCase):
         self.assertTrue(result.latest_qa_is_current)
 
         self.store.save_design(product_id="private-product", user_id="owner-a", design={"template_id": "clean_workbook", "page_size": "letter"})
-        stale_result = export_saved_product_pdf("private-product", "owner-a", self.store)
-        self.assertEqual(stale_result.latest_qa_status, "PASS")
-        self.assertFalse(stale_result.latest_qa_is_current)
+        with self.assertRaisesRegex(ProductPdfExportError, "stale"):
+            export_saved_product_pdf("private-product", "owner-a", self.store)
 
     def test_export_is_owner_scoped_and_requires_approval_and_complete_saved_content(self):
         self.assertIsNone(self.store.get("private-product", "owner-b"))
@@ -252,6 +282,11 @@ class ProductPdfExportTests(unittest.TestCase):
             filename="unsafe.svg", mime_type="image/svg+xml", placement="cover", metadata={},
             content=b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
         )
+        save_pass_qa(
+            self.store, "private-product", "owner-a", self.bp, self.content, self.product_inputs,
+            template_id="modern_business", page_size="letter",
+            assets=self.store.get_visual_assets("private-product", "owner-a"),
+        )
         with self.assertRaisesRegex(ProductPdfExportError, "restricted SVG"):
             export_saved_product_pdf("private-product", "owner-a", self.store)
         self.assertIsNotNone(self.store.get("private-product", "owner-a"))
@@ -264,6 +299,11 @@ class ProductPdfExportTests(unittest.TestCase):
             product_id="private-product", user_id="owner-a", asset_type="icon", title="Unplaced",
             filename="unplaced.svg", mime_type="image/svg+xml", placement="section:8", metadata={},
             content=create_visual_asset("icon", "Unplaced").content,
+        )
+        save_pass_qa(
+            self.store, "private-product", "owner-a", self.bp, self.content, self.product_inputs,
+            template_id="modern_business", page_size="letter",
+            assets=self.store.get_visual_assets("private-product", "owner-a"),
         )
         with self.assertRaisesRegex(ProductPdfExportError, "not present"):
             export_saved_product_pdf("private-product", "owner-a", self.store)
