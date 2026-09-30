@@ -220,6 +220,56 @@ class ProductQATests(unittest.TestCase):
         self.assertIn("does not test PDF", checks["Saved visuals in preview"]["method"])
         self.assertEqual(checks["Final PDF rendering"]["status"], "NOT RUN")
 
+    def test_research_traceability_and_differentiation_checks_are_visible(self):
+        blueprint = sample_blueprint()
+        inputs = sample_inputs().model_copy(update={
+            "research_backed": True,
+            "market_context": [
+                "Etsy: Weekly Client Planning Workbook | format=workbook | observed_price=$12"
+            ],
+            "differentiation": [
+                "Structured handoff review with source-linked examples",
+                "Decision prompts for client-specific planning",
+            ],
+        })
+        enriched_evidence = EVIDENCE.model_copy(update={
+            "source_excerpt": "I struggle to plan client work each week and keep handoffs visible."
+        })
+        inputs = inputs.model_copy(update={"evidence": [enriched_evidence]})
+        content = sample_content().model_copy(deep=True)
+        content.sections[0].blocks.append(
+            ContentBlock(
+                kind="reference",
+                title="Research note",
+                body="Use the supplied research excerpt as a grounding note.",
+                evidence_ids=[enriched_evidence.evidence_id],
+            )
+        )
+        preview = make_preview(blueprint, content, inputs)
+        result = self.run_qa(blueprint, content, inputs, preview=preview)
+        checks = self.checks_by_name(result)
+        self.assertEqual(checks["Research evidence readiness"]["status"], "PASS")
+        self.assertEqual(checks["Research evidence traceability"]["status"], "PASS")
+        self.assertIn(checks["Research-language grounding"]["status"], {"PASS", "REVIEW"})
+        self.assertEqual(checks["Market comparison context"]["status"], "PASS")
+        self.assertEqual(checks["Differentiation captured"]["status"], "PASS")
+        self.assertEqual(checks["Differentiation evidence signal"]["status"], "PASS")
+
+    def test_missing_research_traceability_and_differentiation_stays_advisory(self):
+        blueprint = sample_blueprint()
+        inputs = sample_inputs().model_copy(update={
+            "research_backed": True,
+            "market_context": [],
+            "differentiation": [],
+        })
+        result = self.run_qa(blueprint=blueprint, content=sample_content(), inputs=inputs)
+        checks = self.checks_by_name(result)
+        self.assertEqual(checks["Research evidence readiness"]["status"], "PASS")
+        self.assertEqual(checks["Research evidence traceability"]["status"], "REVIEW")
+        self.assertEqual(checks["Market comparison context"]["status"], "REVIEW")
+        self.assertEqual(checks["Differentiation captured"]["status"], "REVIEW")
+        self.assertEqual(checks["Differentiation evidence signal"]["status"], "REVIEW")
+
     def test_fingerprint_changes_when_content_design_visual_or_preview_changes(self):
         blueprint, content = sample_blueprint(), sample_content()
         base = qa_snapshot_fingerprint(blueprint, content, design={"template_id": "minimal_professional", "page_size": "letter"})
