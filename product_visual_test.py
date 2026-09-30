@@ -7,7 +7,8 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image
 
-from app.product.product_schema import ContentBlock, GeneratedSection, ProductContent
+from app.product.product_schema import BlueprintSection, ContentBlock, GeneratedSection, ProductBlueprint, ProductContent
+from app.ui.product_generator import _derive_visual_steps
 from app.product.storage import ProductStore
 from app.product.template_engine import render_product_html
 from app.product.visual_generator import (
@@ -45,6 +46,63 @@ def seed_product(store: ProductStore, product_id: str = "p1", user_id: str = "ow
 
 
 class ProductVisualTests(unittest.TestCase):
+    def test_visual_step_derivation_uses_blueprint_components(self):
+        blueprint = ProductBlueprint(
+            title="Visual Test",
+            subtitle="Test",
+            target_audience="Readers",
+            core_problem="A process is unclear",
+            desired_outcome="A process is understandable",
+            promise="Follow the process",
+            product_type="Workbook",
+            recommended_types=["Workbook"],
+            recommendation_reason="Structured practice",
+            outline=[
+                BlueprintSection(title="Guided Lessons", purpose="Teach the concept.", components=["paragraph", "steps", "example"]),
+                BlueprintSection(title="Exercises", purpose="Practice the concept.", components=["exercise", "worksheet", "reflection"]),
+                BlueprintSection(title="Review", purpose="Review progress.", components=["checklist", "action_steps"]),
+            ],
+            estimated_page_count=6,
+            design_direction="Clean",
+        )
+        derived = _derive_visual_steps(blueprint, sample_content(), "Exercises")
+        self.assertEqual(derived, ["Practice", "Write", "Reflect"])
+
+    def test_visual_step_derivation_is_safe_for_generated_section_without_components(self):
+        blueprint = ProductBlueprint(
+            title="Visual Test",
+            subtitle="Test",
+            target_audience="Readers",
+            core_problem="A process is unclear",
+            desired_outcome="A process is understandable",
+            promise="Follow the process",
+            product_type="Workbook",
+            recommended_types=["Workbook"],
+            recommendation_reason="Structured practice",
+            outline=[
+                BlueprintSection(title="Guided Lessons", purpose="Teach the concept.", components=["paragraph", "steps"]),
+                BlueprintSection(title="Exercises", purpose="Practice the concept.", components=["exercise", "worksheet"]),
+                BlueprintSection(title="Review", purpose="Review progress.", components=["checklist", "action_steps"]),
+            ],
+            estimated_page_count=6,
+            design_direction="Clean",
+        )
+        generated = ProductContent(
+            product_title="Visual Test",
+            blueprint_fingerprint="0123456789abcdef0123456789abcdef",
+            sections=[GeneratedSection(
+                section_index=0,
+                title="Legacy Generated Section",
+                purpose="Older generated content shape.",
+                blocks=[ContentBlock(kind="paragraph", body="Content.")],
+            )],
+        )
+        self.assertEqual(
+            _derive_visual_steps(blueprint, generated, "Legacy Generated Section"),
+            ["Start", "Work", "Review"],
+        )
+
+
     def test_deterministic_visuals_are_valid_escaped_svg(self):
         created = [
             create_visual_asset("icon", "<Plan & Check>"),
