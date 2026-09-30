@@ -41,9 +41,9 @@ def sample_blueprint(product_type="Workbook"):
         "recommended_types": ["Workbook", "Playbook"],
         "recommendation_reason": "The opportunity points to practical planning and guided implementation.",
         "outline": [
-            {"title": "Start Here", "purpose": "Choose a useful planning outcome.", "components": ["Outcome map"]},
-            {"title": "Weekly Workflow", "purpose": "Set up the planning sequence.", "components": ["Step-by-step workflow", "Example"]},
-            {"title": "Review", "purpose": "Reflect and identify a next step.", "components": ["Weekly review worksheet"]},
+            {"title": "Start Here", "purpose": "Choose a useful planning outcome.", "components": ["paragraph", "worksheet"]},
+            {"title": "Weekly Workflow", "purpose": "Set up the planning sequence.", "components": ["steps", "example"]},
+            {"title": "Review", "purpose": "Reflect and identify a next step.", "components": ["reflection", "action_steps"]},
         ],
         "estimated_page_count": 18,
         "exercises": ["Five-minute planning diagnostic"],
