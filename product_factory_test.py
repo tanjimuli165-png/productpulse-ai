@@ -17,10 +17,17 @@ class FakeCompletions:
     def __init__(self, content):
         self.content = content
         self.request = None
+        self.requests = []
 
     def create(self, **kwargs):
         self.request = kwargs
-        msg = SimpleNamespace(content=self.content)
+        self.requests.append(kwargs)
+        if isinstance(self.content, list):
+            index = min(len(self.requests) - 1, len(self.content) - 1)
+            response_content = self.content[index]
+        else:
+            response_content = self.content
+        msg = SimpleNamespace(content=response_content)
         return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
 
 
@@ -257,6 +264,68 @@ class ProductFactoryTests(unittest.TestCase):
         self.assertEqual(request_body["product_fit_context"]["differentiation"], inputs.differentiation)
         self.assertEqual(request_body["product_fit_context"]["validation_steps"], inputs.validation_steps)
         self.assertEqual(request_body["product_fit_context"]["market_context"], inputs.market_context)
+
+    def test_section_generation_retries_after_grounding_failure(self):
+        good_payload = {
+            "blocks": [
+                {
+                    "kind": "steps",
+                    "title": "Plan meal decisions",
+                    "body": "Use a weekly meal planning routine to reduce the time spent deciding what to cook and create a repeatable weekly meal-prep routine.",
+                    "items": ["Choose meals for the week", "List grocery items", "Record the next cooking action"],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": [],
+                },
+                {
+                    "kind": "reference",
+                    "title": "Research note",
+                    "body": "A supplied research note for the approved product.",
+                    "items": [],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": [],
+                },
+            ]
+        }
+        bad_payload = {
+            "blocks": [
+                {
+                    "kind": "steps",
+                    "title": "General steps",
+                    "body": "Follow a simple process and review what happened before repeating it.",
+                    "items": ["Start with the task", "Review the result", "Choose what to do next"],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": [],
+                },
+                {
+                    "kind": "reference",
+                    "title": "Research note",
+                    "body": "A supplied research note for the approved product.",
+                    "items": [],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": [],
+                },
+            ]
+        }
+        fake = FakeClient(json.dumps([json.dumps(bad_payload), json.dumps(good_payload)]))
+        blueprint = ProductBlueprint.model_validate(sample_blueprint())
+        inputs = ProductInputs(
+            product_title="Meal Prep Workbook",
+            audience="People planning meals",
+            problem="Weekly meal planning takes too much time.",
+            promise="Create a repeatable weekly meal-prep routine.",
+        )
+        result = generate_section_content(
+            blueprint, 1, client=fake, model="test-model", product_inputs=inputs
+        )
+        self.assertEqual(result.section_index, 1)
+        self.assertEqual(len(fake.chat.completions.requests), 2)
+        second_body = json.loads(fake.chat.completions.requests[1]["messages"][1]["content"])
+        self.assertIn("generation_feedback", second_body)
+        self.assertIn("grounding check failed", second_body["generation_feedback"]["previous_validation_error"])
 
     def test_section_generation_rejects_provider_output_that_is_too_generic(self):
         payload = {
