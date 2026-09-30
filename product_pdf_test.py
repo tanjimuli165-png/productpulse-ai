@@ -220,6 +220,29 @@ class ProductPdfExportTests(unittest.TestCase):
         self.assertTrue(any("human review" in item.lower() for item in result.limitations))
         self.assertFalse(Path(self.directory.name, result.filename).exists())
 
+    def test_repeated_export_produces_byte_identical_pdf_for_same_saved_snapshot(self):
+        save_pass_qa(
+            self.store,
+            "private-product",
+            "owner-a",
+            self.bp,
+            self.content,
+            self.product_inputs,
+            template_id="minimal_professional",
+            page_size="letter",
+            assets=[],
+        )
+
+        first = export_saved_product_pdf("private-product", "owner-a", self.store)
+        second = export_saved_product_pdf("private-product", "owner-a", self.store)
+
+        self.assertEqual(first.pdf_bytes, second.pdf_bytes)
+        self.assertEqual(
+            hashlib.sha256(first.pdf_bytes).hexdigest(),
+            hashlib.sha256(second.pdf_bytes).hexdigest(),
+        )
+
+
     def test_saved_a4_page_size_is_used_and_matching_qa_status_is_reported(self):
         self.store.save_design(product_id="private-product", user_id="owner-a", design={"template_id": "clean_workbook", "page_size": "a4"})
         assets = self.store.get_visual_assets("private-product", "owner-a")
