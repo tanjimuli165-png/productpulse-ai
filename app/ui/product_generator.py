@@ -531,6 +531,18 @@ def _render_template_engine(
     details = design_details(active_template)
     st.markdown(f"**Applied template:** {details['name']} · {PAGE_SIZES[active_size]['label']}")
     st.caption(str(details["description"]))
+    palette = details.get("palette", ())
+    if isinstance(palette, (tuple, list)) and len(palette) >= 3:
+        swatches = "".join(
+            f'<span title="{escape}" style="display:inline-block;width:28px;height:28px;border-radius:8px;'
+            f'background:{color};border:1px solid rgba(15,23,42,.12);margin-right:7px;vertical-align:middle"></span>'
+            for color, escape in zip(palette[:3], palette[:3])
+        )
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:4px;margin:.45rem 0 .75rem">'
+            f'<span style="font-size:.78rem;font-weight:700;color:#475569;margin-right:6px">Brand palette</span>{swatches}</div>',
+            unsafe_allow_html=True,
+        )
     detail_cols = st.columns(2)
     detail_cols[0].write("**Best suited to:** " + ", ".join(details["best_for"]))
     detail_cols[1].write("**Type layouts:** " + ", ".join(dict(get_template(active_template).layouts).values()))
