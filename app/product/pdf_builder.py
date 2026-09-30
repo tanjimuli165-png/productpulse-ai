@@ -375,8 +375,12 @@ def _visual_flowables(
     styles: dict[str, ParagraphStyle],
     max_width: float,
     max_height: float = 2.55 * inch,
-    caption: bool = True,
+    caption: bool | None = None,
 ) -> list[Flowable]:
+    # Generated SVGs already contain their own visible title; captions are
+    # useful for uploaded photos but would repeat deterministic vector labels.
+    if caption is None:
+        caption = asset.get("asset_type") == "upload"
     flowables: list[Flowable] = [_raster_flowable(asset, max_width * 0.92, max_height)]
     title = str(asset.get("title") or "Product visual")[:120]
     if caption:
@@ -651,9 +655,8 @@ def _assemble_pdf(
         title_block.append(_paragraph(content.subtitle, styles["CoverSubtitle"]))
     title_block.extend([
         HRFlowable(width="28%", thickness=2, color=accent, hAlign="CENTER", spaceBefore=3, spaceAfter=12),
-        _paragraph(f"For: {blueprint.target_audience}", styles["Body"]),
-        _paragraph(f"Product type: {blueprint.product_type} · Intended outcome: {blueprint.desired_outcome}", styles["Body"]),
-        _paragraph("Evidence-supported concept · validate independently", styles["Callout"]),
+        _paragraph(f"Designed for: {blueprint.target_audience}", styles["Body"]),
+        _paragraph(f"Outcome: {blueprint.desired_outcome}", styles["Callout"]),
     ])
     cover_frame_height = page_height - top_margin - bottom_margin
     reserved = 0.45 * inch + _measure_height([eyebrow], available_width) + _measure_height(title_block, available_width)
@@ -710,7 +713,7 @@ def _assemble_pdf(
         canvas.line(left_margin, 0.40 * inch, page_width - right_margin, 0.40 * inch)
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(colors.HexColor("#687780"))
-        canvas.drawString(left_margin, 0.25 * inch, "Opportunity hypothesis · validate independently")
+        canvas.drawString(left_margin, 0.25 * inch, content.product_title[:80])
         canvas.drawRightString(page_width - right_margin, 0.25 * inch, f"Page {current_doc.page}")
         canvas.restoreState()
 
