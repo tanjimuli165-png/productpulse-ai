@@ -42,10 +42,11 @@ def _set_example(topic: str) -> None:
 
 
 def _select_auth_token(context_cookies, component_cookies=None, *, context_available: bool) -> str | None:
-    """Prefer request cookies on refresh; use the component only when request context is unavailable."""
+    """Prefer the request cookie, then fall back to the browser component cookie when absent."""
     if context_available:
         token = (context_cookies or {}).get(AUTH_COOKIE)
-        return token if isinstance(token, str) and token else None
+        if isinstance(token, str) and token:
+            return token
     token = (component_cookies or {}).get(AUTH_COOKIE)
     return token if isinstance(token, str) and token else None
 
@@ -67,11 +68,12 @@ def _restore_cookie_session(store: ReportStore, cookies: stx.CookieManager) -> N
         pass
 
     component_cookies = None
-    if not context_available:
-        try:
-            component_cookies = cookies.get_all(key="restore_auth_cookie")
-        except Exception:
-            component_cookies = None
+    try:
+        # Request cookies are preferred, but the component remains a valid
+        # browser-cookie fallback when the request context omits the cookie.
+        component_cookies = cookies.get_all(key="restore_auth_cookie")
+    except Exception:
+        component_cookies = None
 
     token = _select_auth_token(
         context_cookies, component_cookies, context_available=context_available
