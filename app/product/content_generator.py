@@ -221,6 +221,26 @@ def _local_section_content(
         blocks=blocks,
     )
 
+def _validate_component_contract(section: BlueprintSection, generated: GeneratedSection) -> None:
+    """Keep provider output aligned with the approved section component contract."""
+    planned = {str(kind).strip().lower() for kind in section.components if str(kind).strip()}
+    actual = {str(block.kind).strip().lower() for block in generated.blocks if str(block.kind).strip()}
+    missing = planned - actual
+    unexpected = actual - planned
+    if missing:
+        raise ValueError(
+            "Generated content is missing planned component(s): "
+            + ", ".join(sorted(missing))
+            + "."
+        )
+    if unexpected:
+        raise ValueError(
+            "Generated content added unplanned component(s): "
+            + ", ".join(sorted(unexpected))
+            + "."
+        )
+
+
 def generate_section_content(
     blueprint: ProductBlueprint,
     section_index: int,
@@ -305,6 +325,7 @@ def generate_section_content(
             purpose=section.purpose,
             blocks=payload["blocks"],
         )
+        _validate_component_contract(section, generated)
         used_ids = {evidence_id for block in generated.blocks for evidence_id in block.evidence_ids}
         unknown_ids = used_ids - allowed_ids
         if unknown_ids:
