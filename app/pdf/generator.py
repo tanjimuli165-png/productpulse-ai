@@ -43,6 +43,30 @@ def generate_pdf(report: Report, output_path: Path) -> Path:
     author_label = str(author_count) if author_count is not None else "Not available"
     story = [Spacer(1, 1.1*inch), Paragraph("GLOBAL DIGITAL PRODUCT<br/>OPPORTUNITY ENGINE", styles["CoverTitle"]), Paragraph("Evidence-backed opportunity scan · Version 1.4", styles["Subtitle"]), Spacer(1, .35*inch), Paragraph(f"<b>Topic:</b> {ptext(report.topic)}<br/><b>Generated:</b> {report.created_at.strftime('%Y-%m-%d %H:%M UTC')}<br/><b>Eligible evidence records:</b> {len(reportable_evidence)}<br/><b>Identifiable author/channel accounts:</b> {ptext(author_label)}", styles["Subtitle"]), PageBreak(), Paragraph("Executive summary", styles["Section"]), Paragraph(ptext(report.executive_summary), styles["Callout"])]
     story += [Paragraph("Evidence and score interpretation", styles["Section"])]
+    if report.research_audit:
+        story += [Paragraph("Research readiness audit", styles["Section"])]
+        research_status = report.research_audit.get("research_status", "Research status not available.")
+        story.append(Paragraph(f"<b>Research basis:</b> {ptext(research_status)}", styles["Callout"]))
+        for check in report.research_audit.get("checks", []):
+            status = check.get("status", "REVIEW")
+            name = ptext(check.get("name", "Research check"))
+            message = ptext(check.get("message", ""))
+            limitation = ptext(check.get("limitation", ""))
+            story.append(
+                Paragraph(
+                    f"<b>{status} · {name}</b><br/>{message}<br/><font size='7'>Limit: {limitation}</font>",
+                    styles["Small"],
+                )
+            )
+        next_validation = report.research_audit.get("next_validation", [])
+        if next_validation:
+            story.append(
+                Paragraph(
+                    "<b>Next validation:</b> " + ptext(" · ".join(next_validation)),
+                    styles["Small"],
+                )
+            )
+
     story.append(Paragraph("Problem-language groups are extracted text patterns. Sentence mentions count occurrences in text; supporting evidence-item counts deduplicate source records within a pattern. Author/channel account IDs or names are source-local when available, may represent accounts rather than people, and are not deduplicated across platforms. Counts do not establish unique customers, recurrence over time, or independent validation.", styles["Small"]))
     if report.scoring_version == "evidence_proxy_v2":
         story.append(Paragraph("The 0–100 composite is a prioritization heuristic, not an outcome-validated score, probability of demand, proof of sales, or validated willingness to pay. The payment-language input is capped at 0.50 and receives only 10% of the composite; generic price words and price mentions alone do not raise it. Evidence coverage reflects collected-record volume only, not source quality. Pricing amounts shown below are hypotheses, not observed sales prices.", styles["Small"]))
@@ -121,7 +145,7 @@ def generate_pdf(report: Report, output_path: Path) -> Path:
         data = [[Paragraph(f"<b>{i}. {ptext(opp.name)}</b>", styles["Normal"]), Paragraph(f"<b>{opp.validation_score}/100</b><br/>{score_label}<br/><font size='7'>Heuristic only; not demand probability or validation</font>", styles["Normal"])], [Paragraph(f"<b>Audience:</b> {ptext(opp.audience)}<br/><b>Promise:</b> {ptext(opp.promise)}<br/><b>Objection bucket:</b> {ptext(opp.objection_bucket)}", styles["Small"]), Paragraph(f"<b>Illustrative pricing hypothesis (unvalidated):</b><br/>Starter {ptext((opp.pricing or {}).get('starter', 'Not available'))}<br/>Core {ptext((opp.pricing or {}).get('core', 'Not available'))}<br/>Premium {ptext((opp.pricing or {}).get('premium', 'Not available'))}<br/>{payment_label}", styles["Small"])], [Paragraph(f"<b>Value hook:</b> {ptext(opp.value_hook)}<br/><b>Pricing rationale:</b> {ptext(opp.pricing_rationale)}", styles["Small"]), Paragraph("<b>Format:</b> " + ptext(", ".join(opp.format)), styles["Small"])] ]
         table = Table(data, colWidths=[5.25*inch, 1.45*inch], repeatRows=1)
         table.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.HexColor("#DCEAF4")), ("BOX", (0,0), (-1,-1), .7, colors.HexColor("#9BB8C8")), ("INNERGRID", (0,0), (-1,-1), .3, colors.HexColor("#C7D8E0")), ("VALIGN", (0,0), (-1,-1), "TOP"), ("LEFTPADDING", (0,0), (-1,-1), 8), ("RIGHTPADDING", (0,0), (-1,-1), 8), ("TOPPADDING", (0,0), (-1,-1), 7), ("BOTTOMPADDING", (0,0), (-1,-1), 7)]))
-        story += [KeepTogether(table), Spacer(1, .16*inch), Paragraph("<b>Differentiation:</b> " + ptext("; ".join(opp.differentiation)), styles["Small"]), Paragraph("<b>Validation next:</b> " + ptext("; ".join(opp.next_steps)), styles["Small"]), Spacer(1, .15*inch)]
+        story += [KeepTogether(table), Spacer(1, .16*inch), Paragraph("<b>Candidate differentiation:</b> " + ptext("; ".join(opp.differentiation)), styles["Small"]), Paragraph("<b>Validation findings:</b> " + ptext("; ".join(getattr(opp, "validation_findings", []))), styles["Small"]), Paragraph("<b>Comparable listing context:</b> " + ptext(" · ".join(getattr(opp, "market_context", [])[:4]) or "Not available"), styles["Small"]), Paragraph("<b>Validation next:</b> " + ptext("; ".join(opp.next_steps)), styles["Small"]), Spacer(1, .15*inch)]
     story += [PageBreak(), Paragraph("Problem-language patterns", styles["Section"])]
     for problem in report.problems:
         mentions = problem.sentence_mentions if problem.sentence_mentions is not None else problem.frequency
