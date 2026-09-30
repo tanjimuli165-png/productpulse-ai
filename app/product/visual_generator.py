@@ -167,8 +167,8 @@ def suggest_visual_ideas(product_type: str, topic: str, sections: list[dict] | N
             ("Worksheet flow", "Working Area", "A simple prompt-to-response flow can make the worksheet easier to use."),
         ],
         "playbook": [
-            ("Strategy map", "Core Strategies", "A compact strategy map can summarize how the main playbook pieces connect."),
-            ("Execution flow", "Execution Plan", "A process visual can help readers move from strategy into execution."),
+            ("Strategy map", "Workflow", "A compact strategy map can summarize how the main playbook pieces connect."),
+            ("Execution flow", "Execution Checklist", "A process visual can help readers move from strategy into execution."),
         ],
         "ebook": [
             ("Concept illustration", "Core Concepts", "A restrained concept diagram can break up dense explanatory pages."),
