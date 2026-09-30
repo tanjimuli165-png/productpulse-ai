@@ -292,38 +292,44 @@ def _local_section_content(
         elif kind == "worksheet":
             worksheet_items = {
                 "setup": [
-                    f"My current situation involving {focus}:",
+                    f"Current situation to map for {focus}:",
                     "Constraints, resources, or missing information:",
-                    f"My target for useful progress toward {outcome_focus}:",
-                    "What I can realistically do first:",
+                    f"Useful progress toward {outcome_focus} would look like:",
+                    "The first realistic action I can take:",
                     "What I still need to verify:",
                 ],
                 "practice": [
-                    f"Example I am working through for {focus}:",
+                    f"Case example I am working through for {focus}:",
                     f"The {section.title.lower()} method I am applying:",
-                    "What I observed while applying it:",
-                    "What I would change on the next example:",
-                    f"How this supports {outcome_focus}:",
+                    "What happened during the practice:",
+                    "Where the method was unclear or difficult:",
+                    f"How this connects to {outcome_focus}:",
                 ],
                 "apply": [
-                    "The concrete output I need to create:",
-                    f"The part of {focus} this output addresses:",
+                    "Concrete output or decision I need to create:",
+                    f"Specific part of {focus} this output addresses:",
                     "Action, decision, or material completed:",
-                    f"Evidence that the output supports {outcome_focus}:",
+                    f"How I will check the output against {outcome_focus}:",
                     "What still needs testing or refinement:",
                 ],
                 "review": [
-                    f"What actually happened while addressing {focus}:",
-                    "What helped and what created friction:",
+                    f"Observed result while addressing {focus}:",
+                    "Helpful factors and remaining friction:",
                     f"What the result suggests about {outcome_focus}:",
                     "Which assumption remains unverified:",
-                    "The next change I will test:",
+                    "The next change or follow-up check:",
                 ],
             }
+            worksheet_body = {
+                "setup": "Use this page to establish the starting point before changing the approach.",
+                "practice": "Use this page while applying the method to one concrete example.",
+                "apply": "Use this page to turn the section work into a concrete output or decision.",
+                "review": "Use this page to capture what happened and decide what to change next.",
+            }[section_stage]
             blocks.append(block(
                 "worksheet",
                 f"{section.title}: working page",
-                f"Complete these prompts for your own {topic.lower()} work.",
+                worksheet_body,
                 items=worksheet_items[section_stage],
             ))
 
