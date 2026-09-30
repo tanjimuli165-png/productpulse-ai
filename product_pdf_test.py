@@ -217,7 +217,7 @@ class ProductPdfExportTests(unittest.TestCase):
         self.assertIn("Opportunity hypothesis", extracted)
         self.assertTrue(any(len(page.images) for page in reader.pages))
         self.assertEqual(result.latest_qa_status, "PASS")
-        self.assertTrue(any("not a visual" in item for item in result.limitations))
+        self.assertTrue(any("human review" in item.lower() for item in result.limitations))
         self.assertFalse(Path(self.directory.name, result.filename).exists())
 
     def test_saved_a4_page_size_is_used_and_matching_qa_status_is_reported(self):
