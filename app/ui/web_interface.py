@@ -252,6 +252,75 @@ def _build_manual_topic_report(topic: str, description: str, audience: str, desi
         collection_notes=["Created from the user's topic, description, and optional supplied reference material; no public-source demand claim is made."],
     )
 
+def _build_research_audit(
+    reportable_evidence: list[Evidence],
+    problems: list[ProblemSignal],
+    marketplace_gaps: list,
+    gap_analysis: dict,
+) -> dict:
+    """Create a transparent research-readiness audit without inventing a demand score."""
+    source_names = sorted({item.source for item in reportable_evidence if item.source})
+    contributors = count_identified_contributors(reportable_evidence)
+    checks = [
+        {
+            "name": "Eligible evidence records",
+            "status": "PASS" if len(reportable_evidence) >= 5 else "REVIEW",
+            "message": f"{len(reportable_evidence)} eligible normalized source records remain after cleaning and deduplication.",
+            "limitation": "Record count is coverage, not source quality, independence, or customer count.",
+        },
+        {
+            "name": "Source diversity",
+            "status": "PASS" if len(source_names) >= 3 else "REVIEW",
+            "message": f"Evidence spans {len(source_names)} source type(s): {', '.join(source_names) or 'none'}.",
+            "limitation": "Different source types can still repeat the same underlying information.",
+        },
+        {
+            "name": "Explicit problem signals",
+            "status": "PASS" if problems else "FLAG",
+            "message": f"{len(problems)} problem-language group(s) were extracted from eligible evidence.",
+            "limitation": "Extracted language is heuristic and does not prove recurrence among people.",
+        },
+        {
+            "name": "Source-local contributor identifiers",
+            "status": "PASS" if contributors is not None and contributors >= 3 else "REVIEW",
+            "message": (
+                f"{contributors} source-local contributor identifiers were available."
+                if contributors is not None
+                else "No source-local contributor identifiers were available."
+            ),
+            "limitation": "These identifiers are source-local and are not a cross-platform unique-person count.",
+        },
+        {
+            "name": "Competition-gap evidence",
+            "status": "PASS" if gap_analysis.get("status") == "observed" and gap_analysis.get("gaps") else "REVIEW",
+            "message": (
+                f"{len(gap_analysis.get('gaps', []))} observed gap theme(s) were matched to distinct evidence records."
+                if gap_analysis.get("status") == "observed"
+                else "No recognized competition-gap theme was verified from collected evidence."
+            ),
+            "limitation": "A matched gap term does not prove an unmet market need.",
+        },
+        {
+            "name": "Comparable marketplace listings",
+            "status": "PASS" if marketplace_gaps else "REVIEW",
+            "message": f"{len(marketplace_gaps)} marketplace listing record(s) are available for side-by-side review.",
+            "limitation": "Listing presence, price, ratings, and review snippets are not proof of demand or sales.",
+        },
+    ]
+    return {
+        "checks": checks,
+        "source_types": source_names,
+        "eligible_evidence_count": len(reportable_evidence),
+        "problem_group_count": len(problems),
+        "marketplace_listing_count": len(marketplace_gaps),
+        "next_validation": [
+            "Review the original source records behind the strongest problem signals.",
+            "Compare the proposed product directly with observed alternatives before making differentiation or positioning claims.",
+            "Test the problem and product with intended readers; research evidence alone does not validate willingness to pay or product-market fit.",
+        ],
+    }
+
+
 def run_engine(topic: str, sources: list[str], limit: int) -> Report:
     topic = normalize_query(topic)
     collectors = {"Reddit": RedditCollector(), "YouTube": YouTubeCollector(), "Web": WebCollector(), "Quora": QuoraCollector(), "Instagram": InstagramCollector()}
@@ -281,6 +350,7 @@ def run_engine(topic: str, sources: list[str], limit: int) -> Report:
     top_problem = problems[0] if problems else None
     product_blueprint = build_blueprint(topic, top_opportunity, top_problem) if top_opportunity else {}
     launch_kit = build_launch_kit(topic, top_opportunity, top_problem, marketplace_gaps) if top_opportunity else {}
+    research_audit = _build_research_audit(reportable_evidence, problems, marketplace_gaps, gaps)
     best = opportunities[0].validation_score if opportunities else 0
     contributors = count_identified_contributors(reportable_evidence)
     contributor_note = f" The records exposed {contributors} distinct source-local author/channel account identifiers or names; this is not necessarily a count of unique people." if contributors is not None else " Author/channel identities were not available in the eligible records."
@@ -288,7 +358,23 @@ def run_engine(topic: str, sources: list[str], limit: int) -> Report:
                f"The highest heuristic priority score was {best}/100. Groups are text patterns, not unique people or proof of recurrence.{contributor_note} "
                "Scores are ranking heuristics, not validated demand or willingness to pay; interviews, a paid pilot, or a pre-sale are needed to test those outcomes.")
     sales_hooks = [opportunity.value_hook for opportunity in opportunities if opportunity.value_hook]
-    return Report(id=uuid.uuid4().hex, topic=topic, evidence=evidence, problems=problems, opportunities=opportunities, objection_matrix=objection_matrix, sales_hooks=sales_hooks, marketplace_gaps=marketplace_gaps, gap_analysis=gaps, product_blueprint=product_blueprint, launch_kit=launch_kit, executive_summary=summary, scoring_version="evidence_proxy_v2", collection_notes=notes + [spending["interpretation"], gaps["assessment"], "The composite priority score is a heuristic, not an outcome-validated demand score or probability."])
+    return Report(
+        id=uuid.uuid4().hex,
+        topic=topic,
+        evidence=evidence,
+        problems=problems,
+        opportunities=opportunities,
+        objection_matrix=objection_matrix,
+        sales_hooks=sales_hooks,
+        marketplace_gaps=marketplace_gaps,
+        gap_analysis=gaps,
+        product_blueprint=product_blueprint,
+        launch_kit=launch_kit,
+        research_audit=research_audit,
+        executive_summary=summary,
+        scoring_version="evidence_proxy_v2",
+        collection_notes=notes + [spending["interpretation"], gaps["assessment"], "The composite priority score is a heuristic, not an outcome-validated demand score or probability."],
+    )
 
 
 def _render_source_links(report: Report) -> None:
@@ -512,6 +598,16 @@ div[data-testid="stFileUploader"]{border-radius:12px}
         st.caption("Scores prioritize hypotheses for review; they do not validate willingness to pay, sales, or recurrence. Source record volume is not proof of independent customer support.")
         if not report.problems:
             st.warning("No explicit customer pain points were found for this query. Try a more specific topic or include a customer segment, workflow, or frustration.")
+        if report.research_audit:
+            st.subheader("Research readiness audit")
+            st.caption("This audit shows what the scan actually established and what still requires verification. It does not produce a demand score.")
+            for check in report.research_audit.get("checks", []):
+                status = check.get("status", "REVIEW")
+                with st.expander(f"{status} · {check.get('name', 'Research check')}"):
+                    st.write(check.get("message", ""))
+                    st.caption("Limit: " + check.get("limitation", "Not specified."))
+            st.caption("Next validation: " + " · ".join(report.research_audit.get("next_validation", [])))
+
         st.subheader("Executive summary")
         st.info(report.executive_summary)
         st.subheader("Top hypotheses")
