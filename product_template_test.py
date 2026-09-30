@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 
 from app.product.product_schema import (
     DESIGN_TEMPLATE_IDS,
+    PRODUCT_TYPES,
     ContentBlock,
     EvidenceReference,
     GeneratedSection,
@@ -58,6 +59,28 @@ class ProductTemplateTests(unittest.TestCase):
         self.assertEqual(template_recommendation("Checklist")[0], "minimal_professional")
         for template_id in DESIGN_TEMPLATE_IDS:
             self.assertTrue(design_details(template_id)["name"])
+
+    def test_every_built_in_product_format_has_a_known_template_recommendation(self):
+        expected = {
+            "Ebook": "minimal_professional",
+            "Playbook": "modern_business",
+            "Workbook": "clean_workbook",
+            "Planner": "clean_workbook",
+            "Checklist": "minimal_professional",
+            "Guide": "minimal_professional",
+            "Journal": "clean_workbook",
+            "Tracker": "clean_workbook",
+            "Action Plan": "modern_business",
+            "Challenge": "modern_business",
+            "Template": "clean_workbook",
+            "Worksheet": "clean_workbook",
+        }
+        self.assertEqual(set(expected), set(PRODUCT_TYPES))
+        for product_type in PRODUCT_TYPES:
+            template_id, reason = template_recommendation(product_type)
+            self.assertEqual(template_id, expected[product_type])
+            self.assertTrue(reason.strip())
+
 
     def test_same_content_renders_distinct_versions_and_supports_letter_and_a4(self):
         content = sample_content()
