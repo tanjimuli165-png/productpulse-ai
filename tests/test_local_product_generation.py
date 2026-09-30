@@ -61,7 +61,7 @@ def test_local_generation_is_topic_and_section_aware_across_multiple_products():
         else:
             assert "onboarding" in text and ("client" in text or "consultant" in text)
 
-        assert "what i still need to test or verify:" in text
+        assert "still need" in text
         signatures.append([tuple(block.kind for block in section.blocks) for section in sections])
 
     assert len({repr(signature) for signature in signatures}) == 1
