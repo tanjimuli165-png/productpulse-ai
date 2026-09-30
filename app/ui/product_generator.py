@@ -440,6 +440,45 @@ def _render_content_editor(
                     st.error(f"The section was not regenerated ({type(exc).__name__}). Existing sections and edits remain saved; retry after checking provider settings.")
 
 
+def _derive_visual_steps(
+    blueprint: ProductBlueprint,
+    content: ProductContent,
+    section_title: str,
+) -> list[str]:
+    """Derive diagram steps from the approved blueprint, with a safe generated-section fallback."""
+    component_labels = {
+        "paragraph": "Understand",
+        "steps": "Follow steps",
+        "action_steps": "Take action",
+        "example": "Review example",
+        "exercise": "Practice",
+        "worksheet": "Write",
+        "reflection": "Reflect",
+        "table": "Track",
+        "checklist": "Check",
+        "reference": "Review source",
+    }
+    # BlueprintSection owns components and is the authoritative source for
+    # visual flow suggestions. GeneratedSection intentionally has no components.
+    matched_section = next(
+        (section for section in blueprint.outline if section.title == section_title),
+        None,
+    )
+    if matched_section is None:
+        matched_section = next(
+            (section for section in content.sections if section.title == section_title),
+            None,
+        )
+    components = getattr(matched_section, "components", None) or []
+    derived_steps = []
+    for component in components:
+        label = component_labels.get(str(component).strip().lower())
+        if label and label not in derived_steps:
+            derived_steps.append(label)
+    derived_steps = derived_steps[:5]
+    return derived_steps if len(derived_steps) >= 2 else ["Start", "Work", "Review"]
+
+
 def _render_visual_engine(
     product_store: ProductStore,
     user_id: str,
@@ -479,31 +518,11 @@ def _render_visual_engine(
             st.session_state[f"product_{product_id}_visual_title"] = idea["title"]
             st.session_state[f"product_{product_id}_visual_placement"] = placement
             if visual_kind == "diagram":
-                matched_section = next(
-                    (section for section in content.sections if section.title == idea["placement"]),
-                    None,
+                derived_steps = _derive_visual_steps(
+                    blueprint,
+                    content,
+                    idea["placement"],
                 )
-                component_labels = {
-                    "paragraph": "Understand",
-                    "steps": "Follow steps",
-                    "action_steps": "Take action",
-                    "example": "Review example",
-                    "exercise": "Practice",
-                    "worksheet": "Write",
-                    "reflection": "Reflect",
-                    "table": "Track",
-                    "checklist": "Check",
-                    "reference": "Review source",
-                }
-                derived_steps = []
-                if matched_section is not None:
-                    for component in matched_section.components:
-                        label = component_labels.get(str(component).strip().lower())
-                        if label and label not in derived_steps:
-                            derived_steps.append(label)
-                derived_steps = derived_steps[:5]
-                if len(derived_steps) < 2:
-                    derived_steps = ["Start", "Work", "Review"]
                 st.session_state[f"product_{product_id}_visual_steps"] = "\n".join(derived_steps)
             else:
                 st.session_state[f"product_{product_id}_visual_steps"] = ""
