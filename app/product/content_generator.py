@@ -529,7 +529,11 @@ def _validate_content_grounding(
     problem_terms = _content_grounding_terms(product_inputs.problem)
     outcome_terms = _content_grounding_terms(product_inputs.promise or blueprint.desired_outcome)
     section_focus_terms = _section_focus_terms(section)
-    reference_terms = _content_grounding_terms(product_inputs.reference_material)
+    reference_terms = [
+        term
+        for term in _content_grounding_terms(product_inputs.reference_material)
+        if term not in set(product_terms + problem_terms + outcome_terms)
+    ]
 
     product_matches = _matched_grounding_terms(product_terms, generated_text)
     problem_matches = _matched_grounding_terms(problem_terms, generated_text)
