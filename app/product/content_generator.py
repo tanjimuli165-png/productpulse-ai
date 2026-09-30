@@ -186,19 +186,50 @@ def _local_section_content(
         ))
 
     if has("reflection"):
-        blocks.append(block(
-            "reflection",
-            f"{section.title}: reflection",
-            "Use the prompts to review your work rather than simply restating the section.",
-            items=[
+        if blueprint.product_type.strip().lower() == "journal":
+            if "progress review" in title_lower:
+                prompts = [
+                    "What pattern do I notice across my recent entries?",
+                    "What felt easier, harder, or different over this period?",
+                    "What is one small change I want to carry into the next period?",
+                ]
+            elif "next steps" in title_lower:
+                prompts = [
+                    "What do I want to continue from this journal period?",
+                    "What would make the next step feel realistic and specific?",
+                    "What will I check in my next entry?",
+                ]
+            else:
+                prompts = [
+                    "What am I noticing right now?",
+                    "What feels most important to explore honestly?",
+                    "What question do I want to return to later?",
+                ]
+            reflection_body = "Write from your own experience. There is no required answer; use the prompts to notice, explore, and decide what matters next."
+        else:
+            prompts = [
                 "What worked or became clearer?",
                 "Where did I still experience friction?",
                 "What will I keep, change, or test next?",
-            ],
+            ]
+            reflection_body = "Use the prompts to review your work rather than simply restating the section."
+        blocks.append(block(
+            "reflection",
+            f"{section.title}: reflection",
+            reflection_body,
+            items=prompts,
         ))
 
     if has("table"):
-        if blueprint.product_type.strip().lower() == "planner":
+        if blueprint.product_type.strip().lower() == "journal":
+            columns = ["Entry / period", "What I noticed", "What I want to explore", "Next check-in"]
+            rows = [
+                ["Today / this period", "What stood out?", "What question remains?", "When will I revisit it?"],
+                ["A meaningful moment", "What did I learn?", "What deserves more attention?", "What will I notice next?"],
+                ["Progress review", "What pattern appeared?", "What do I want to carry forward?", "When will I reflect again?"],
+            ]
+            body = "Use this table to capture patterns across entries rather than replacing the journal writing itself."
+        elif blueprint.product_type.strip().lower() == "planner":
             columns = ["Time / item", "Priority", "Planned action", "Review"]
             rows = [
                 ["Planning period", "High / medium / low", "What needs to happen?", "When will I check it?"],
