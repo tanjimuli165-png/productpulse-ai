@@ -45,25 +45,25 @@ def _restore_cookie_session(store: ReportStore, cookies: stx.CookieManager) -> N
     """Restore the server-side session after a browser refresh/reconnect."""
     if st.session_state.get("auth_user"):
         return
+
+    # On a real browser refresh, Streamlit's request context contains the
+    # cookies sent with the initial request. Treat that source as authoritative
+    # so an asynchronous CookieManager component cannot race the login view.
+    context_available = False
     token = None
     try:
-        token = st.context.cookies.get(AUTH_COOKIE)
+        context_cookies = st.context.cookies
+        context_available = True
+        token = context_cookies.get(AUTH_COOKIE)
     except (AttributeError, RuntimeError):
         pass
-    if not token:
+
+    if not context_available:
         try:
-            # Force a fresh client-side cookie read. CookieManager caches the
-            # value from construction, which can be empty during the first
-            # browser-refresh pass until the component responds.
-            cookie_values = cookies.get_all(key="restore_auth_cookie")
-            token = cookie_values.get(AUTH_COOKIE)
+            token = cookies.get_all(key="restore_auth_cookie").get(AUTH_COOKIE)
         except Exception:
-            pass
-    if not token:
-        try:
-            token = cookies.get(AUTH_COOKIE)
-        except Exception:
-            pass
+            token = None
+
     if token:
         user = store.authenticate_session(token)
         if user:
