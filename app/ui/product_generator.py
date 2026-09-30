@@ -675,6 +675,14 @@ def _render_final_verification(product_store: ProductStore, user_id: str, produc
     st.divider()
     st.subheader("Final verification · before download")
     st.caption("Last gate: content, repetition, preview structure, visuals, and the actual exported PDF are checked together.")
+    st.markdown("""
+    <div style="display:flex;gap:.45rem;flex-wrap:wrap;margin:.35rem 0 1rem">
+      <span style="padding:.42rem .68rem;border:1px solid #B9D8D3;border-radius:999px;background:#E6F2F0;color:#134E4A;font-weight:750;font-size:.78rem">01 Save product</span>
+      <span style="padding:.42rem .68rem;border:1px solid #B9D8D3;border-radius:999px;background:#E6F2F0;color:#134E4A;font-weight:750;font-size:.78rem">02 Automated QA</span>
+      <span style="padding:.42rem .68rem;border:1px solid #B9D8D3;border-radius:999px;background:#E6F2F0;color:#134E4A;font-weight:750;font-size:.78rem">03 Final verification</span>
+      <span style="padding:.42rem .68rem;border:1px solid #D8E2E0;border-radius:999px;background:#fff;color:#475569;font-weight:750;font-size:.78rem">04 Download</span>
+    </div>
+    """, unsafe_allow_html=True)
     template_id = saved_product.get("design_template_id", "minimal_professional")
     page_size = saved_product.get("page_size", "letter")
     try:
@@ -722,11 +730,16 @@ def _render_final_verification(product_store: ProductStore, user_id: str, produc
     final_runs = [r for r in runs if r.get("result_payload", {}).get("final_verification")]
     if final_runs:
         result = final_runs[0].get("result_payload", {})
-        if result.get("status") == "PASS":
-            st.success("READY FOR DOWNLOAD — final verification PASS.")
+        status = result.get("status", "NEEDS REVISION")
+        checks = result.get("checks", [])
+        flagged = sum(1 for check in checks if check.get("status") in {"FLAG", "NOT RUN"})
+        if status == "PASS":
+            st.success("FINAL VERIFICATION PASS")
+            st.caption("The current saved snapshot passed the available final checks. Download remains locked if the saved snapshot changes.")
         else:
-            st.warning("NOT READY YET — final verification found review items.")
-        for check in result.get("checks", []):
+            st.warning("FINAL VERIFICATION NEEDS REVIEW")
+            st.caption(f"{flagged} check(s) need attention. Fix the findings, save changes, rerun Automated QA, then run Final verification again.")
+        for check in checks:
             if check.get("status") in {"FLAG", "NOT RUN"}:
                 with st.expander(f"{check.get('status')} · {check.get('name')}", expanded=True):
                     st.write(check.get("message", ""))
@@ -807,8 +820,12 @@ def _render_pdf_export(product_store: ProductStore, user_id: str, product_id: st
     except Exception:
         final_verified_current = False
 
-    if not final_verified_current:
-        st.warning("Run Final verification and get PASS before downloading this final product PDF.")
+    if final_verified_current:
+        st.success("FINAL DOWNLOAD UNLOCKED")
+        st.caption("This download matches the saved snapshot that passed Final verification.")
+    else:
+        st.warning("FINAL DOWNLOAD LOCKED")
+        st.caption("Required sequence: 1) save the current product → 2) Automated QA PASS → 3) Final verification PASS → 4) download.")
 
     st.download_button(
         "Download product PDF",
