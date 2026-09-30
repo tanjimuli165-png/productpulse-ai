@@ -39,7 +39,7 @@ def sample_blueprint() -> ProductBlueprint:
         recommended_types=["Workbook"],
         recommendation_reason="A workbook supports implementation.",
         outline=[
-            BlueprintSection(title="Plan the Week", purpose="Create a focused client-work plan.", components=["worksheet", "exercise"]),
+            BlueprintSection(title="Plan the Week", purpose="Create a focused client-work plan.", components=["steps", "exercise", "table"]),
             BlueprintSection(title="Review Progress", purpose="Review the weekly plan and adjust.", components=["checklist"]),
             BlueprintSection(title="Prepare Next Week", purpose="Choose a next action for the coming week.", components=["action_steps"]),
         ],
