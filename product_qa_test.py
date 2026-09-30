@@ -297,6 +297,10 @@ class ProductQATests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(checks["Final PDF rendering"]["status"], "NOT RUN")
         self.assertEqual(checks["Final PDF structural verification"]["status"], "PASS")
+        self.assertEqual(
+            result["verified_pdf_sha256"],
+            hashlib.sha256(output.getvalue()).hexdigest(),
+        )
 
     def test_fingerprint_changes_when_content_design_visual_or_preview_changes(self):
         blueprint, content = sample_blueprint(), sample_content()
