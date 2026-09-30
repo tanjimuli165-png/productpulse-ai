@@ -8,7 +8,6 @@ from typing import Any
 from pydantic import ValidationError
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from app.database.models import Opportunity, Report
 from app.evidence_metrics import is_eligible_evidence
