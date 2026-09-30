@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any
+
+from pydantic import ValidationError
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -17,6 +20,9 @@ from app.product.qa import final_verification, qa_snapshot_fingerprint, run_prod
 from app.product.storage import ProductStore
 from app.product.strategy import BlueprintGenerationError, generate_blueprint, recommend_product_types
 from app.product.template_engine import PAGE_SIZES, design_details, get_template, render_product_html, template_recommendation
+logger = logging.getLogger(__name__)
+
+
 from app.product.visual_generator import (
     ACCENT_COLORS,
     ICON_OPTIONS,
@@ -1108,28 +1114,80 @@ def render_product_generator(
     if st.button("Generate Product Blueprint" if not blueprint_payload else "Regenerate Product Blueprint", type="primary", key=f"{prefix}_generate"):
         try:
             generated = generate_blueprint(inputs, selected_type)
-            is_new_blueprint = not bool(blueprint_payload)
-            saved = product_store.save(
-                product_id=product_id,
-                user_id=user_id,
-                source_report_id=report.id,
-                opportunity_index=opportunity_index,
-                opportunity_name=opportunity.name,
-                source_payload=source,
-                inputs_payload=inputs.model_dump(mode="json"),
-                blueprint_payload=generated.model_dump(mode="json"),
-                status="draft",
-                change_summary="AI-generated product blueprint" if is_new_blueprint else "AI-regenerated product blueprint",
-                create_version=True,
-            )
-            st.session_state[f"{prefix}_current_blueprint"] = saved["blueprint_payload"]
-            st.session_state[f"{prefix}_current_inputs"] = saved["inputs_payload"]
-            st.success("Blueprint generated and saved as a new version.")
-            st.rerun()
         except BlueprintGenerationError as exc:
             st.error(str(exc))
+            generated = None
+        except ValidationError as exc:
+            logger.exception(
+                "Product blueprint validation failed during generation for product_id=%s",
+                product_id,
+            )
+            details = []
+            for error in exc.errors(include_url=False):
+                loc = ".".join(str(part) for part in error.get("loc", ())) or "<model>"
+                details.append(f"{loc}: {error.get('msg', 'validation failed')}")
+            st.error(
+                "Blueprint validation failed. "
+                + " | ".join(details[:8])
+                + (" | …" if len(details) > 8 else "")
+            )
+            generated = None
         except Exception as exc:
-            st.error(f"Could not save the generated blueprint ({type(exc).__name__}). Your selected research remains available; retry after checking the database and provider settings.")
+            logger.exception(
+                "Unexpected product blueprint generation failure for product_id=%s",
+                product_id,
+            )
+            st.error(
+                f"Blueprint generation failed ({type(exc).__name__}). "
+                "Your selected research remains available; retry after checking the provider settings."
+            )
+            generated = None
+
+        if generated is not None:
+            is_new_blueprint = not bool(blueprint_payload)
+            try:
+                inputs_payload = inputs.model_dump(mode="json")
+                blueprint_payload_to_save = generated.model_dump(mode="json")
+                saved = product_store.save(
+                    product_id=product_id,
+                    user_id=user_id,
+                    source_report_id=report.id,
+                    opportunity_index=opportunity_index,
+                    opportunity_name=opportunity.name,
+                    source_payload=source,
+                    inputs_payload=inputs_payload,
+                    blueprint_payload=blueprint_payload_to_save,
+                    status="draft",
+                    change_summary="AI-generated product blueprint" if is_new_blueprint else "AI-regenerated product blueprint",
+                    create_version=True,
+                )
+                st.session_state[f"{prefix}_current_blueprint"] = saved["blueprint_payload"]
+                st.session_state[f"{prefix}_current_inputs"] = saved["inputs_payload"]
+                st.success("Blueprint generated and saved as a new version.")
+                st.rerun()
+            except ValidationError as exc:
+                logger.exception(
+                    "Product blueprint validation failed while saving for product_id=%s",
+                    product_id,
+                )
+                details = []
+                for error in exc.errors(include_url=False):
+                    loc = ".".join(str(part) for part in error.get("loc", ())) or "<model>"
+                    details.append(f"{loc}: {error.get('msg', 'validation failed')}")
+                st.error(
+                    "Blueprint save validation failed. "
+                    + " | ".join(details[:8])
+                    + (" | …" if len(details) > 8 else "")
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Could not save generated product blueprint for product_id=%s",
+                    product_id,
+                )
+                st.error(
+                    f"Could not save the generated blueprint ({type(exc).__name__}). "
+                    "Your selected research remains available; retry after checking the database and provider settings."
+                )
 
     if blueprint_payload:
         blueprint = ProductBlueprint.model_validate(blueprint_payload)
