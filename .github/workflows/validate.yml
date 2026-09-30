@@ -38,3 +38,6 @@ jobs:
           from app.product import qa
           print("Critical product modules imported successfully.")
           PY
+
+      - name: Run focused local product-generation test
+        run: python -m pytest -q tests/test_local_product_generation.py
