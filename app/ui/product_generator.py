@@ -1228,6 +1228,41 @@ def render_product_generator(
 
     inputs = clean_product_inputs(_edit_inputs(inputs, prefix))
     st.session_state[f"{prefix}_current_inputs"] = inputs.model_dump(mode="json")
+
+    # "Apply input edits" is a persistence action when a saved blueprint already
+    # exists. Changing the product brief invalidates generated content so the
+    # next approval/content pass is grounded in the new saved inputs.
+    if existing and existing.get("blueprint_payload") and st.session_state.get(f"{prefix}_inputs_applied"):
+        current_payload = inputs.model_dump(mode="json")
+        saved_payload = existing.get("inputs_payload") or {}
+        if json.dumps(current_payload, sort_keys=True, ensure_ascii=False) != json.dumps(
+            saved_payload, sort_keys=True, ensure_ascii=False
+        ):
+            try:
+                existing = product_store.save(
+                    product_id=product_id,
+                    user_id=user_id,
+                    source_report_id=report.id,
+                    opportunity_index=opportunity_index,
+                    opportunity_name=opportunity.name,
+                    source_payload=source,
+                    inputs_payload=current_payload,
+                    blueprint_payload=existing["blueprint_payload"],
+                    status="draft",
+                    change_summary="Updated saved product inputs; generated content invalidated",
+                    create_version=False,
+                )
+                st.session_state[f"{prefix}_current_blueprint"] = existing["blueprint_payload"]
+                st.session_state[f"{prefix}_inputs_applied"] = False
+                st.success(
+                    "Product inputs saved. Existing generated content was cleared because the product brief changed; review and approve the blueprint again."
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(
+                    f"Product inputs could not be saved ({type(exc).__name__}). "
+                    "The previous saved inputs and generated content remain unchanged."
+                )
     suggested_types, suggestion_reason = recommend_product_types(inputs)
     st.markdown("**Initial format-based recommendation**")
     st.write(", ".join(suggested_types))
