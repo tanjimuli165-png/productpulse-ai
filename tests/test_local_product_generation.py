@@ -69,6 +69,32 @@ def test_local_generation_is_topic_and_section_aware_across_multiple_products():
     assert topic_texts[cases[1]["title"]] != topic_texts[cases[2]["title"]]
 
 
+def test_generic_local_fallback_avoids_near_duplicate_blocks():
+    inputs = ProductInputs(
+        product_title="Weekly Project Planner",
+        audience="Freelance designers",
+        problem="Project tasks and deadlines get scattered across notes and messages.",
+        promise="Plan work in one place and keep deadlines visible.",
+        format_hints=["Workbook"],
+    )
+    blueprint = _local_blueprint(inputs, "Workbook")
+    sections = [generate_section_content(blueprint, i) for i in range(len(blueprint.outline))]
+    content = ProductContent(
+        product_title=blueprint.title,
+        subtitle=blueprint.subtitle,
+        blueprint_fingerprint="a" * 64,
+        sections=sections,
+    )
+    result = run_product_qa(
+        blueprint,
+        content,
+        inputs,
+        design={"template_id": "minimal_professional", "page_size": "letter"},
+        preview_html=None,
+    )
+    checks = {check["name"]: check for check in result["checks"]}
+    assert checks["Repeated content"]["status"] == "PASS"
+
 def test_creator_reference_material_is_used_in_local_generation():
     inputs = ProductInputs(
         product_title="Client Onboarding Checklist",
