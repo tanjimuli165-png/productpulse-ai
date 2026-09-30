@@ -33,6 +33,16 @@ from reportlab.platypus import (
     TableStyle,
 )
 from reportlab.platypus.tableofcontents import TableOfContents
+
+try:
+    from banglapdf import BanglaParagraph, register_fonts
+    _BANGLA_PDF_AVAILABLE = True
+except Exception:
+    BanglaParagraph = None
+    register_fonts = None
+    _BANGLA_PDF_AVAILABLE = False
+
+_BANGLA_FONT_READY = False
 from svglib.svglib import svg2rlg
 
 from app.product.product_schema import (
@@ -141,7 +151,24 @@ def _paragraph(value: Any, style: ParagraphStyle) -> Paragraph:
     from xml.sax.saxutils import escape
 
     text = escape(str(value or "").replace("\r\n", "\n").replace("\r", "\n"), {'"': "&quot;"})
+    if _BANGLA_FONT_READY and BanglaParagraph is not None:
+        return BanglaParagraph(text.replace("\n", "<br/>"), style, markup=True)
     return Paragraph(text.replace("\n", "<br/>"), style)
+
+
+def _ensure_bangla_font_support() -> bool:
+    """Enable HarfBuzz-shaped Bangla paragraphs when a compatible font is available."""
+    global _BANGLA_FONT_READY
+    if _BANGLA_FONT_READY:
+        return True
+    if not _BANGLA_PDF_AVAILABLE or register_fonts is None:
+        return False
+    try:
+        register_fonts()
+    except Exception:
+        return False
+    _BANGLA_FONT_READY = True
+    return True
 
 
 def _safe_url(value: str) -> str:
@@ -246,10 +273,11 @@ def _validate_visual(asset: dict) -> None:
 
 
 def _styles(template_id: str, template: Any) -> tuple[dict[str, ParagraphStyle], colors.Color, colors.Color, colors.Color]:
+    bangla_ready = _ensure_bangla_font_support()
     navy_hex, accent_hex, tint_hex, body_hex = template.palette
     navy, accent, tint, body = map(colors.HexColor, (navy_hex, accent_hex, tint_hex, body_hex))
-    heading_font = "Times-Bold" if template_id == "minimal_professional" else "Helvetica-Bold"
-    body_font = "Helvetica"
+    heading_font = "BanglaB" if bangla_ready else ("Times-Bold" if template_id == "minimal_professional" else "Helvetica-Bold")
+    body_font = "Bangla" if bangla_ready else "Helvetica"
     sample = getSampleStyleSheet()
     styles = {
         "CoverEyebrow": ParagraphStyle(
@@ -302,6 +330,11 @@ def _styles(template_id: str, template: Any) -> tuple[dict[str, ParagraphStyle],
             borderPadding=9, spaceBefore=9, spaceAfter=12,
         ),
     }
+    if bangla_ready:
+        bold_names = {"DPECoverEyebrow", "DPECoverTitle", "DPESectionHeading", "DPEBlockHeading", "DPEBlockHeadingSplittable", "DPETableHeader"}
+        for style in styles.values():
+            style.fontName = "BanglaB" if style.name in bold_names else "Bangla"
+            style.shaping = 1
     return styles, navy, accent, tint
 
 
@@ -795,7 +828,7 @@ def export_saved_product_pdf(product_id: str, user_id: str, store: ProductStore)
         limitations=(
             "Structural preflight plus low-resolution visual smoke testing are required; the visual checks are heuristic and are not a human page-by-page design review.",
             "Automated QA must pass and match the current snapshot before export; PDF preflight additionally checks for empty and near-duplicate consecutive pages. Visual typography, exact overflow, color, accessibility, and reader-specific rendering still require human review.",
-            "The current templates use ReportLab's built-in base fonts; uncommon symbols and writing systems outside their glyph coverage may need font work and manual review.",
+            "Bangla paragraphs use HarfBuzz-shaped Noto-compatible fonts when the optional Bangla PDF font package can initialize; if a compatible runtime font is unavailable, the PDF falls back safely to the existing base fonts and should be manually reviewed for non-Latin glyph coverage.",
             "A passing preflight or saved QA result does not guarantee accuracy, usefulness, safety, demand, sales, commercial success, or an error-free PDF.",
             "Review the downloaded PDF on its intended screen or printer before distribution; re-run content QA after edits.",
         ),
