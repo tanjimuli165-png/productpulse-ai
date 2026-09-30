@@ -10,6 +10,7 @@ from app.product.product_schema import (
     EvidenceReference,
     GeneratedSection,
     ProductBlueprint,
+    ProductInputs,
 )
 from app.product.strategy import BlueprintGenerationError, _provider_client
 
@@ -53,6 +54,8 @@ SECTION_CONTENT_JSON_SCHEMA: dict[str, Any] = {
 }
 
 CONTENT_SYSTEM_PROMPT = """You are a careful digital-product content writer. Write complete, useful content for exactly the one requested section of an already-approved product blueprint. Follow its purpose and planned components; choose a suitable mix of concise explanations, actionable steps, clearly labeled illustrative examples, exercises, checklists, worksheets, tables, reflection prompts, and next actions as appropriate. Return structured content blocks, not markdown or a whole-book draft.
+
+Every section must be concretely grounded in the approved product context. Use the actual problem and desired outcome language to guide the work, and include product-specific nouns, decisions, examples, or actions rather than generic advice about the process, the method, or the topic. Do not merely paraphrase the section purpose as filler. Each non-reference block should contain at least one meaningful concept from the problem or desired outcome when such concepts are available. Across the section, address both the problem and the desired outcome rather than drifting into a generic template.
 
 Treat the research opportunity as an evidence-supported hypothesis that still needs validation. Never promise sales, results, guaranteed demand, or outcomes. Do not invent statistics, research findings, testimonials, customer quotes, named sources, or validation results. Any example scenario must be explicitly described as hypothetical or illustrative. Use supplied source excerpts as grounding context and cite only the exact evidence IDs present in the source list; never invent IDs. If there are no suitable sources, do not create citations. Avoid unsupported factual claims, filler, and repetition. Be practical, plain-language, inclusive, and specific enough that the reader can act."""
 
@@ -438,6 +441,95 @@ def _local_section_content(
         blocks=blocks,
     )
 
+
+
+GROUNDING_STOP_WORDS = {
+    "about", "after", "again", "also", "because", "before", "being", "between", "could",
+    "does", "each", "from", "have", "into", "more", "most", "other", "should", "some",
+    "such", "than", "that", "their", "there", "these", "they", "this", "through", "under",
+    "what", "when", "where", "which", "with", "your", "reader", "people", "someone",
+    "things", "really", "want", "needs", "need", "will", "would", "only", "very",
+}
+
+def _content_grounding_terms(value: str) -> list[str]:
+    result: list[str] = []
+    for word in re.findall(r"[^\\W_]+", (value or "").lower(), flags=re.UNICODE):
+        if len(word) < 4 or word in GROUNDING_STOP_WORDS or word in result:
+            continue
+        result.append(word)
+    return result
+
+
+def _content_grounding_stem(value: str) -> str:
+    token = re.sub(r"[^a-z0-9]", "", (value or "").lower())
+    for suffix in ("ization", "ations", "ation", "ments", "ment", "ingly", "edly", "ing", "ers", "ies", "es", "ed", "s"):
+        if len(token) > len(suffix) + 3 and token.endswith(suffix):
+            token = token[:-len(suffix)]
+            break
+    return token
+
+
+def _matched_grounding_terms(source_terms: list[str], target_text: str) -> set[str]:
+    target_terms = set(_content_grounding_terms(target_text))
+    target_stems = {_content_grounding_stem(term) for term in target_terms}
+    return {term for term in source_terms if term in target_terms or _content_grounding_stem(term) in target_stems}
+
+
+def _validate_content_grounding(
+    blueprint: ProductBlueprint,
+    section: BlueprintSection,
+    generated: GeneratedSection,
+    product_inputs: ProductInputs | None,
+) -> None:
+    """Reject provider output that is structurally valid but too generic for the saved product brief."""
+    if product_inputs is None:
+        return
+
+    generated_text = " ".join(
+        fragment
+        for block in generated.blocks
+        for fragment in [
+            block.title,
+            block.body,
+            *block.items,
+            *[cell for row in block.rows for cell in row],
+        ]
+        if fragment and fragment.strip()
+    )
+    problem_terms = _content_grounding_terms(product_inputs.problem)
+    outcome_terms = _content_grounding_terms(product_inputs.promise or blueprint.desired_outcome)
+    problem_matches = _matched_grounding_terms(problem_terms, generated_text)
+    outcome_matches = _matched_grounding_terms(outcome_terms, generated_text)
+    missing: list[str] = []
+    if problem_terms and not problem_matches:
+        missing.append("the approved problem")
+    if outcome_terms and not outcome_matches:
+        missing.append("the desired outcome")
+    if missing:
+        raise ValueError(
+            "Generated content grounding check failed: "
+            + " and ".join(missing)
+            + " concepts were not represented in this section. Regenerate this section so the saved content stays specific to the approved product."
+        )
+
+    section_blocks = [block for block in generated.blocks if block.kind != "reference"]
+    block_without_grounding: list[str] = []
+    anchor_terms = list(dict.fromkeys(problem_terms + outcome_terms))
+    for index, block in enumerate(section_blocks, start=1):
+        block_text = " ".join(
+            fragment
+            for fragment in [block.title, block.body, *block.items, *[cell for row in block.rows for cell in row]]
+            if fragment and fragment.strip()
+        )
+        if anchor_terms and not _matched_grounding_terms(anchor_terms, block_text):
+            block_without_grounding.append(f"block {index} ({block.kind})")
+    if block_without_grounding:
+        raise ValueError(
+            "Generated content grounding check failed: "
+            + ", ".join(block_without_grounding)
+            + " contain no distinctive problem/outcome concept. Replace generic wording with product-specific detail."
+        )
+
 def _validate_component_contract(section: BlueprintSection, generated: GeneratedSection) -> None:
     """Keep provider output aligned with the approved section component contract."""
     planned = {str(kind).strip().lower() for kind in section.components if str(kind).strip()}
@@ -466,6 +558,7 @@ def generate_section_content(
     *,
     client=None,
     model: str | None = None,
+    product_inputs: ProductInputs | None = None,
 ) -> GeneratedSection:
     """Generate validated content for one outline section, never the whole product."""
     if not 0 <= section_index < len(blueprint.outline):
@@ -514,6 +607,13 @@ def generate_section_content(
         },
         "available_research_references": [item.model_dump(mode="json") for item in references],
         "creator_reference_material": reference_material,
+        "product_fit_context": {
+            "research_backed": bool(product_inputs.research_backed) if product_inputs is not None else bool(references),
+            "differentiation": list(product_inputs.differentiation) if product_inputs is not None else [],
+            "validation_steps": list(product_inputs.validation_steps) if product_inputs is not None else [],
+            "market_context": list(product_inputs.market_context) if product_inputs is not None else [],
+            "grounding_rule": "Use these fields to keep the section product-specific. Do not copy marketplace listing language into reader-facing content unless directly relevant and supported.",
+        },
     }
     try:
         response = client.chat.completions.create(
@@ -543,6 +643,7 @@ def generate_section_content(
             blocks=payload["blocks"],
         )
         _validate_component_contract(section, generated)
+        _validate_content_grounding(blueprint, section, generated, product_inputs)
         used_ids = {evidence_id for block in generated.blocks for evidence_id in block.evidence_ids}
         unknown_ids = used_ids - allowed_ids
         if unknown_ids:
@@ -552,6 +653,9 @@ def generate_section_content(
         raise
     except Exception as exc:
         name = type(exc).__name__
+        detail = str(exc)
+        if detail.startswith("Generated content grounding check failed:"):
+            raise ContentGenerationError(detail) from exc
         raise ContentGenerationError(
             f"Section content generation failed ({name}). Check the configured provider/model and try again. Previously saved sections are preserved."
         ) from exc
