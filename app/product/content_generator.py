@@ -112,13 +112,34 @@ def _local_section_content(
 
     if has("steps", "action_steps"):
         kind = "action_steps" if has("action_steps") and not has("steps") else "steps"
-        items = [
-            f"Choose one real situation where {problem.lower()} appears.",
-            f"Apply the {section.title.lower()} approach to that situation and work toward {outcome.lower()}.",
-            "Record what happened, what remains unclear, and the next adjustment to test.",
-        ]
-        blocks.append(block(kind, f"{section.title}: practical steps", 
-                            f"Use these steps with one real example from your {topic.lower()}.", items=items))
+        if blueprint.product_type.strip().lower() == "planner":
+            if "next period" in title_lower:
+                items = [
+                    f"Choose the next planning period for {topic.lower()}.",
+                    f"Carry forward only the priorities that still support {outcome.lower()}.",
+                    "Assign a realistic next action and a review point for each priority.",
+                ]
+            elif "priority" in title_lower:
+                items = [
+                    "List the tasks that matter for the current planning period.",
+                    "Mark which task needs attention first and why.",
+                    "Set a small, realistic next action for each priority.",
+                ]
+            else:
+                items = [
+                    f"Choose one planning period for {topic.lower()}.",
+                    f"Write the most important actions connected to {outcome.lower()}.",
+                    "Set a review point so the plan can be adjusted rather than treated as fixed.",
+                ]
+            body = "Use this planning sequence to turn the product goal into a workable schedule."
+        else:
+            items = [
+                f"Choose one real situation where {problem.lower()} appears.",
+                f"Apply the {section.title.lower()} approach to that situation and work toward {outcome.lower()}.",
+                "Record what happened, what remains unclear, and the next adjustment to test.",
+            ]
+            body = f"Use these steps with one real example from your {topic.lower()}."
+        blocks.append(block(kind, f"{section.title}: practical steps", body, items=items))
 
     if has("checklist"):
         blocks.append(block(
@@ -177,16 +198,28 @@ def _local_section_content(
         ))
 
     if has("table"):
-        blocks.append(block(
-            "table",
-            f"{section.title}: planning table",
-            "Use the table with your own product-specific details.",
-            columns=["Item", "Current state", "Next action"],
-            rows=[
+        if blueprint.product_type.strip().lower() == "planner":
+            columns = ["Time / item", "Priority", "Planned action", "Review"]
+            rows = [
+                ["Planning period", "High / medium / low", "What needs to happen?", "When will I check it?"],
+                [topic[:80], "What matters most?", "What is the next action?", "What changed?"],
+                [outcome[:80], "What supports the goal?", "What will I schedule?", "What needs adjustment?"],
+            ]
+            body = "Use this table to schedule priorities and leave a clear point for review."
+        else:
+            columns = ["Item", "Current state", "Next action"]
+            rows = [
                 [section.title, "What is true now?", "What will I do next?"],
                 [problem[:80], "What friction remains?", "What will I test?"],
                 [outcome[:80], "What progress would look like?", "When will I review it?"],
-            ],
+            ]
+            body = "Use the table with your own product-specific details."
+        blocks.append(block(
+            "table",
+            f"{section.title}: planning table",
+            body,
+            columns=columns,
+            rows=rows,
         ))
 
     if has("reference"):
