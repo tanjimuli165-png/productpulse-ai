@@ -1088,10 +1088,23 @@ def render_product_generator(
     if existing and existing["source_report_id"] != report.id:
         st.error("This product draft is not linked to the selected research report.")
         return
-    inputs = ProductInputs.model_validate(
+    raw_inputs = (
         st.session_state.get(f"product_{product_id}_current_inputs")
         or (existing["inputs_payload"] if existing else build_product_inputs(report, opportunity).model_dump(mode="json"))
     )
+    # Backfill provenance fields for drafts created before the research-context fields
+    # existed, without replacing any user-edited title/problem/promise values.
+    if isinstance(raw_inputs, dict):
+        raw_inputs = dict(raw_inputs)
+        if "research_backed" not in raw_inputs:
+            raw_inputs["research_backed"] = report.scoring_version != "manual_topic_v1"
+        if "market_context" not in raw_inputs:
+            raw_inputs["market_context"] = list(getattr(opportunity, "market_context", []))[:12]
+        if "reference_material" not in raw_inputs and report.scoring_version == "manual_topic_v1":
+            raw_inputs["reference_material"] = "\n\n".join(
+                item.text[:12000] for item in report.evidence if item.text
+            )[:50000]
+    inputs = ProductInputs.model_validate(raw_inputs)
     prefix = f"product_{product_id}"
     st.title("AI Digital Product Factory")
     is_manual_topic = report.scoring_version == "manual_topic_v1"
