@@ -1,4 +1,4 @@
-streamlit>=1.36
+streamlit>=1.43
 requests>=2.31
 beautifulsoup4>=4.12
 reportlab>=4.0
