@@ -72,8 +72,10 @@ class ProductInputs(BaseModel):
     evidence: List[EvidenceReference] = Field(default_factory=list, max_length=10)
     validation_steps: List[str] = Field(default_factory=list, max_length=12)
     reference_material: str = Field(default="", max_length=50000)
+    research_backed: bool = False
+    market_context: List[str] = Field(default_factory=list, max_length=12)
 
-    @field_validator("format_hints", "differentiation", "validation_steps")
+    @field_validator("format_hints", "differentiation", "validation_steps", "market_context")
     @classmethod
     def trim_list_values(cls, values: List[str]) -> List[str]:
         return [str(value).strip() for value in values if str(value).strip()]
@@ -85,6 +87,19 @@ class BlueprintSection(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     purpose: str = Field(min_length=1, max_length=500)
     components: List[str] = Field(default_factory=list, max_length=12)
+
+    @field_validator("components")
+    @classmethod
+    def valid_components(cls, values: List[str]) -> List[str]:
+        allowed = {
+            "paragraph", "steps", "example", "exercise", "checklist",
+            "worksheet", "table", "reflection", "action_steps", "reference",
+        }
+        cleaned = [str(value).strip().lower() for value in values if str(value).strip()]
+        invalid = [value for value in cleaned if value not in allowed]
+        if invalid:
+            raise ValueError(f"Unsupported content component(s): {', '.join(sorted(set(invalid)))}")
+        return list(dict.fromkeys(cleaned))
 
 
 class ProductBlueprint(BaseModel):
