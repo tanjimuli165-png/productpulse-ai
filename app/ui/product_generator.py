@@ -46,6 +46,7 @@ def build_product_inputs(report: Report, opportunity: Opportunity) -> ProductInp
     """Map one selected opportunity to a compact, source-linked builder input."""
     problem = _matching_problem(report, opportunity)
     evidence_refs: list[EvidenceReference] = []
+    source_items = []
     if problem:
         if report.scoring_version == "manual_topic_v1":
             source_items = report.evidence[:10]
