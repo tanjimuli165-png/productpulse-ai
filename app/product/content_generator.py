@@ -160,7 +160,7 @@ def _local_section_content(
             blocks.append(block(
                 "paragraph",
                 f"{section.title}: focused context",
-                f"For {audience}, this section works on {section_role.lower()}. Keep {focus} in view and use the section to move toward {outcome_focus}. Do not treat an unverified assumption as a fact.",
+                f"For {audience}, keep {focus} in view while completing this section. Connect the work to {outcome_focus}, use concrete examples from your own situation, and mark any assumption that still needs evidence or testing.",
             ))
 
         elif kind in {"steps", "action_steps"}:
