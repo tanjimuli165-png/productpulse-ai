@@ -709,6 +709,7 @@ def qa_snapshot_fingerprint(
     blueprint: ProductBlueprint,
     content: ProductContent,
     *,
+    inputs: ProductInputs | None = None,
     design: dict[str, str],
     visual_assets: list[dict] | None = None,
     preview_html: str | None = None,
@@ -727,6 +728,7 @@ def qa_snapshot_fingerprint(
     snapshot = {
         "blueprint": blueprint.model_dump(mode="json"),
         "content": content.model_dump(mode="json"),
+        "inputs": inputs.model_dump(mode="json") if inputs is not None else None,
         "design": design,
         "assets": assets,
         "preview_sha256": hashlib.sha256((preview_html or "").encode("utf-8")).hexdigest(),
