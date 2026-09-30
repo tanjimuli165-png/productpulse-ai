@@ -269,6 +269,15 @@ class ProductFactoryTests(unittest.TestCase):
                     "columns": [],
                     "rows": [],
                     "evidence_ids": [],
+                },
+                {
+                    "kind": "reference",
+                    "title": "Research note",
+                    "body": "A supplied research note for the approved product.",
+                    "items": [],
+                    "columns": [],
+                    "rows": [],
+                    "evidence_ids": [],
                 }
             ]
         }
