@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image as PILImage, UnidentifiedImageError
 from pypdf import PdfReader
+import fitz
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4, letter
@@ -501,6 +502,61 @@ def _asset_placements(assets: list[dict], sections: list[Any]) -> tuple[dict[str
     return by_placement, len(assets)
 
 
+def _visual_pdf_preflight(pdf_bytes: bytes, page_count: int) -> tuple[str, ...]:
+    """Render every page at low resolution and run conservative visual sanity checks.
+
+    This is intentionally a renderer-level smoke test, not a claim of human visual
+    approval. It catches failed page rendering, unexpectedly tiny/empty pages, and
+    content that reaches the physical page edge where clipping is more likely.
+    """
+    try:
+        document = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception as exc:
+        raise ProductPdfExportError("PDF visual preflight could not open the assembled document for rendering.") from exc
+    try:
+        if len(document) != page_count:
+            raise ProductPdfExportError("PDF visual preflight found a page-count mismatch between the PDF reader and renderer.")
+        rendered = 0
+        for index, page in enumerate(document, start=1):
+            try:
+                pixmap = page.get_pixmap(matrix=fitz.Matrix(1.0, 1.0), alpha=False)
+                if pixmap.width < 200 or pixmap.height < 200:
+                    raise ProductPdfExportError(f"PDF visual preflight found an unexpectedly small rendered page ({index}).")
+                samples = pixmap.samples
+                channels = pixmap.n
+                total = pixmap.width * pixmap.height
+                dark = 0
+                min_x = pixmap.width
+                min_y = pixmap.height
+                max_x = max_y = -1
+                for y in range(pixmap.height):
+                    row_start = y * pixmap.width * channels
+                    for x in range(pixmap.width):
+                        offset = row_start + x * channels
+                        if max(samples[offset:offset + 3]) < 245:
+                            dark += 1
+                            min_x = min(min_x, x)
+                            min_y = min(min_y, y)
+                            max_x = max(max_x, x)
+                            max_y = max(max_y, y)
+                ink_ratio = dark / total if total else 0.0
+                if ink_ratio < 0.0008:
+                    raise ProductPdfExportError(f"PDF visual preflight found a nearly empty rendered page ({index}). Review page breaks or saved content.")
+                edge_margin = max(3, round(min(pixmap.width, pixmap.height) * 0.004))
+                if min_x <= edge_margin or min_y <= edge_margin or max_x >= pixmap.width - 1 - edge_margin or max_y >= pixmap.height - 1 - edge_margin:
+                    raise ProductPdfExportError(f"PDF visual preflight found rendered content touching the page edge on page {index}. Review possible clipping or oversized flowables.")
+                rendered += 1
+            finally:
+                pixmap = None
+        return (
+            f"Rendered {rendered} page(s) at low resolution for visual smoke testing.",
+            "Rendered pages were checked for near-empty output and content touching the physical page edge.",
+            "This visual preflight is heuristic; human review is still required for typography, spacing, readability, and final print/display quality.",
+        )
+    finally:
+        document.close()
+
+
 def _assemble_pdf(
     *,
     blueprint: ProductBlueprint,
@@ -508,7 +564,7 @@ def _assemble_pdf(
     inputs: ProductInputs,
     design: ProductDesign,
     assets: list[dict],
-) -> tuple[bytes, int, int]:
+) -> tuple[bytes, int, int, tuple[str, ...]]:
     template = get_template(design.template_id)
     page_sizes = {"letter": letter, "a4": A4}
     page_size = page_sizes[design.page_size]
@@ -635,7 +691,8 @@ def _assemble_pdf(
         raise ProductPdfExportError("The assembled PDF did not pass a structural read check. Try again or review saved content and visuals.") from exc
     if not pdf_bytes.startswith(b"%PDF-") or not pdf_bytes.rstrip().endswith(b"%%EOF"):
         raise ProductPdfExportError("The generated file did not pass the basic PDF file-boundary check.")
-    return pdf_bytes, page_count, visual_count
+    visual_preflight = _visual_pdf_preflight(pdf_bytes, page_count)
+    return pdf_bytes, page_count, visual_count, visual_preflight
 
 
 def export_saved_product_pdf(product_id: str, user_id: str, store: ProductStore) -> ProductPdfExport:
@@ -704,7 +761,7 @@ def export_saved_product_pdf(product_id: str, user_id: str, store: ProductStore)
             if latest_qa_status != "PASS":
                 raise ProductPdfExportError("Final QA must PASS before PDF export. Run automated QA, fix any flagged issues, save the changes, and run QA again.")
             raise ProductPdfExportError("The saved QA result is stale for the current product snapshot. Run automated QA again before exporting.")
-        pdf_bytes, page_count, visual_count = _assemble_pdf(
+        pdf_bytes, page_count, visual_count, visual_preflight = _assemble_pdf(
             blueprint=blueprint,
             content=content,
             inputs=inputs,
@@ -729,13 +786,14 @@ def export_saved_product_pdf(product_id: str, user_id: str, store: ProductStore)
             "PDF opened with the structural reader.",
             f"The saved product title was found in extracted PDF text; {page_count} page(s) were assembled.",
             f"{visual_count} saved visual(s) passed export input checks.",
+            *visual_preflight,
         ),
         latest_qa_status=latest_qa_status,
         latest_qa_is_current=latest_qa_is_current,
         latest_qa_created_at=(latest_qa or {}).get("created_at"),
         qa_history_unavailable=qa_history_unavailable,
         limitations=(
-            "The structural preflight confirms a readable PDF container, non-empty page count, and title text extraction; it is not a visual page-by-page review.",
+            "Structural preflight plus low-resolution visual smoke testing are required; the visual checks are heuristic and are not a human page-by-page design review.",
             "Automated QA must pass and match the current snapshot before export; PDF preflight additionally checks for empty and near-duplicate consecutive pages. Visual typography, exact overflow, color, accessibility, and reader-specific rendering still require human review.",
             "The current templates use ReportLab's built-in base fonts; uncommon symbols and writing systems outside their glyph coverage may need font work and manual review.",
             "A passing preflight or saved QA result does not guarantee accuracy, usefulness, safety, demand, sales, commercial success, or an error-free PDF.",
