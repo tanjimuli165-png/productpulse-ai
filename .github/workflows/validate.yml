@@ -39,6 +39,37 @@ jobs:
           print("Critical product modules imported successfully.")
           PY
 
+      - name: Smoke-test Streamlit entrypoint
+        run: |
+          python -m pip install --quiet curl-cffi
+          streamlit run streamlit_app.py --server.headless true --server.address 127.0.0.1 --server.port 8501 > /tmp/productpulse-streamlit.log 2>&1 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import time
+          import urllib.request
+
+          url = "http://127.0.0.1:8501/_stcore/health"
+          last_error = None
+          for _ in range(30):
+              try:
+                  with urllib.request.urlopen(url, timeout=2) as response:
+                      body = response.read().decode("utf-8", errors="replace")
+                  if response.status == 200 and body:
+                      print("Streamlit health endpoint responded:", body)
+                      break
+              except Exception as exc:
+                  last_error = exc
+              time.sleep(1)
+          else:
+              print("Streamlit startup log:")
+              try:
+                  print(open("/tmp/productpulse-streamlit.log", encoding="utf-8").read())
+              except Exception:
+                  pass
+              raise SystemExit(f"Streamlit entrypoint did not become healthy: {last_error}")
+          PY
+
       - name: Run focused local product-generation tests
         run: python -m pytest -q tests/test_local_product_generation.py
 
