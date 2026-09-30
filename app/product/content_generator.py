@@ -306,12 +306,24 @@ def _local_section_content(
                     f"How this connects to {outcome_focus}:",
                 ],
                 "apply": [
-                    "Concrete output or decision I need to create:",
-                    f"Specific part of {focus} this output addresses:",
-                    "Action, decision, or material completed:",
-                    f"How I will check the output against {outcome_focus}:",
-                    "What still needs testing or refinement:",
-                ],
+                    (
+                        [
+                            f"Scenario I will practice for {focus}:",
+                            "Inputs or details needed for the exercise:",
+                            "Decision or action I will take:",
+                            f"What I expect to learn about {outcome_focus}:",
+                            "What I would change in a second attempt:",
+                        ]
+                        if "exercise" in title_lower
+                        else [
+                            f"Concrete output or decision I need to create for {focus}:",
+                            "Source material, inputs, or constraints to use:",
+                            "Action, decision, or material completed:",
+                            f"How I will check the output against {outcome_focus}:",
+                            "What still needs testing or refinement:",
+                        ]
+                    )
+                ][0],
                 "review": [
                     f"Observed result while addressing {focus}:",
                     "Helpful factors and remaining friction:",
@@ -323,7 +335,11 @@ def _local_section_content(
             worksheet_body = {
                 "setup": "Use this page to establish the starting point before changing the approach.",
                 "practice": "Use this page while applying the method to one concrete example.",
-                "apply": "Use this page to turn the section work into a concrete output or decision.",
+                "apply": (
+                    "Use this page as a hands-on practice exercise before moving to the next section."
+                    if "exercise" in title_lower
+                    else "Use this page to turn the section work into a concrete output or decision."
+                ),
                 "review": "Use this page to capture what happened and decide what to change next.",
             }[section_stage]
             blocks.append(block(
