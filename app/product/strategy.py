@@ -60,18 +60,92 @@ SYSTEM_PROMPT = """You are a careful digital-product strategy assistant. Create 
 
 
 PRODUCT_TYPE_PROFILES: dict[str, dict[str, object]] = {
-    "Ebook": {"template": "minimal_professional", "sections": ["Introduction", "Core Concepts", "Practical Examples", "Key Takeaways", "Action Plan"], "blocks": ["paragraph", "example", "action_steps"]},
-    "Playbook": {"template": "modern_business", "sections": ["Quick Start", "Workflow", "Decision Points", "Execution Checklist", "Review"], "blocks": ["steps", "checklist", "table", "action_steps"]},
-    "Workbook": {"template": "clean_workbook", "sections": ["Baseline", "Guided Lessons", "Exercises", "Worksheets", "Review"], "blocks": ["exercise", "worksheet", "reflection"]},
-    "Planner": {"template": "clean_workbook", "sections": ["Goals", "Planning Pages", "Priority Tracker", "Review", "Next Period"], "blocks": ["worksheet", "checklist", "reflection"]},
-    "Checklist": {"template": "minimal_professional", "sections": ["Before You Start", "Main Checklist", "Quality Check", "Common Misses", "Final Sign-off"], "blocks": ["checklist", "steps", "reference"]},
-    "Guide": {"template": "minimal_professional", "sections": ["Start Here", "Step-by-Step Guide", "Examples", "Troubleshooting", "Next Steps"], "blocks": ["paragraph", "steps", "example", "action_steps"]},
-    "Journal": {"template": "clean_workbook", "sections": ["How to Use", "Prompts", "Reflection Pages", "Progress Review", "Next Steps"], "blocks": ["reflection", "worksheet"]},
-    "Tracker": {"template": "clean_workbook", "sections": ["Setup", "Tracking Pages", "Weekly Review", "Progress Summary", "Next Actions"], "blocks": ["table", "worksheet", "reflection"]},
-    "Action Plan": {"template": "modern_business", "sections": ["Outcome", "Milestones", "Action Steps", "Risks", "Review"], "blocks": ["action_steps", "table", "checklist"]},
-    "Challenge": {"template": "modern_business", "sections": ["Challenge Rules", "Day/Week Plan", "Progress Checks", "Troubleshooting", "Completion Review"], "blocks": ["steps", "checklist", "reflection"]},
-    "Template": {"template": "clean_workbook", "sections": ["How to Use", "Template", "Example", "Customization", "Final Checklist"], "blocks": ["worksheet", "example", "checklist"]},
-    "Worksheet": {"template": "clean_workbook", "sections": ["Instructions", "Prompt", "Working Area", "Review", "Next Action"], "blocks": ["worksheet", "reflection", "action_steps"]},
+    # Each format now has section-specific jobs and components. This prevents
+    # the blueprint from asking every section to use the same content recipe.
+    "Ebook": {"template": "minimal_professional", "sections": [
+        {"title": "Introduction", "blocks": ["paragraph"]},
+        {"title": "Core Concepts", "blocks": ["paragraph", "example"]},
+        {"title": "Practical Examples", "blocks": ["example", "exercise"]},
+        {"title": "Key Takeaways", "blocks": ["checklist", "paragraph"]},
+        {"title": "Action Plan", "blocks": ["action_steps", "checklist"]},
+    ]},
+    "Playbook": {"template": "modern_business", "sections": [
+        {"title": "Quick Start", "blocks": ["steps", "checklist"]},
+        {"title": "Workflow", "blocks": ["steps", "table"]},
+        {"title": "Decision Points", "blocks": ["table", "action_steps"]},
+        {"title": "Execution Checklist", "blocks": ["checklist", "action_steps"]},
+        {"title": "Review", "blocks": ["reflection", "action_steps"]},
+    ]},
+    "Workbook": {"template": "clean_workbook", "sections": [
+        {"title": "Baseline", "blocks": ["paragraph", "worksheet"]},
+        {"title": "Guided Lessons", "blocks": ["paragraph", "steps", "example"]},
+        {"title": "Exercises", "blocks": ["exercise", "worksheet"]},
+        {"title": "Worksheets", "blocks": ["worksheet", "table"]},
+        {"title": "Review", "blocks": ["reflection", "action_steps"]},
+    ]},
+    "Planner": {"template": "clean_workbook", "sections": [
+        {"title": "Goals", "blocks": ["worksheet", "action_steps"]},
+        {"title": "Planning Pages", "blocks": ["worksheet", "table"]},
+        {"title": "Priority Tracker", "blocks": ["table", "checklist"]},
+        {"title": "Review", "blocks": ["reflection", "worksheet"]},
+        {"title": "Next Period", "blocks": ["action_steps", "worksheet"]},
+    ]},
+    "Checklist": {"template": "minimal_professional", "sections": [
+        {"title": "Before You Start", "blocks": ["steps", "checklist"]},
+        {"title": "Main Checklist", "blocks": ["checklist"]},
+        {"title": "Quality Check", "blocks": ["checklist", "table"]},
+        {"title": "Common Misses", "blocks": ["checklist", "paragraph"]},
+        {"title": "Final Sign-off", "blocks": ["checklist", "action_steps"]},
+    ]},
+    "Guide": {"template": "minimal_professional", "sections": [
+        {"title": "Start Here", "blocks": ["paragraph", "steps"]},
+        {"title": "Step-by-Step Guide", "blocks": ["steps", "checklist"]},
+        {"title": "Examples", "blocks": ["example", "exercise"]},
+        {"title": "Troubleshooting", "blocks": ["table", "action_steps"]},
+        {"title": "Next Steps", "blocks": ["action_steps", "checklist"]},
+    ]},
+    "Journal": {"template": "clean_workbook", "sections": [
+        {"title": "How to Use", "blocks": ["paragraph", "steps"]},
+        {"title": "Prompts", "blocks": ["reflection", "worksheet"]},
+        {"title": "Reflection Pages", "blocks": ["reflection", "worksheet"]},
+        {"title": "Progress Review", "blocks": ["table", "reflection"]},
+        {"title": "Next Steps", "blocks": ["action_steps", "reflection"]},
+    ]},
+    "Tracker": {"template": "clean_workbook", "sections": [
+        {"title": "Setup", "blocks": ["paragraph", "worksheet"]},
+        {"title": "Tracking Pages", "blocks": ["table", "worksheet"]},
+        {"title": "Weekly Review", "blocks": ["table", "reflection"]},
+        {"title": "Progress Summary", "blocks": ["table", "paragraph"]},
+        {"title": "Next Actions", "blocks": ["action_steps", "checklist"]},
+    ]},
+    "Action Plan": {"template": "modern_business", "sections": [
+        {"title": "Outcome", "blocks": ["paragraph", "action_steps"]},
+        {"title": "Milestones", "blocks": ["table", "action_steps"]},
+        {"title": "Action Steps", "blocks": ["action_steps", "checklist"]},
+        {"title": "Risks", "blocks": ["table", "action_steps"]},
+        {"title": "Review", "blocks": ["reflection", "action_steps"]},
+    ]},
+    "Challenge": {"template": "modern_business", "sections": [
+        {"title": "Challenge Rules", "blocks": ["paragraph", "checklist"]},
+        {"title": "Day/Week Plan", "blocks": ["steps", "table"]},
+        {"title": "Progress Checks", "blocks": ["checklist", "reflection"]},
+        {"title": "Troubleshooting", "blocks": ["table", "action_steps"]},
+        {"title": "Completion Review", "blocks": ["reflection", "action_steps"]},
+    ]},
+    "Template": {"template": "clean_workbook", "sections": [
+        {"title": "How to Use", "blocks": ["paragraph", "steps"]},
+        {"title": "Template", "blocks": ["worksheet", "table"]},
+        {"title": "Example", "blocks": ["example", "worksheet"]},
+        {"title": "Customization", "blocks": ["worksheet", "checklist"]},
+        {"title": "Final Checklist", "blocks": ["checklist", "action_steps"]},
+    ]},
+    "Worksheet": {"template": "clean_workbook", "sections": [
+        {"title": "Instructions", "blocks": ["paragraph", "steps"]},
+        {"title": "Prompt", "blocks": ["worksheet", "reflection"]},
+        {"title": "Working Area", "blocks": ["worksheet", "table"]},
+        {"title": "Review", "blocks": ["reflection", "checklist"]},
+        {"title": "Next Action", "blocks": ["action_steps", "worksheet"]},
+    ]},
 }
 
 
@@ -129,16 +203,17 @@ def _local_blueprint(inputs: ProductInputs, selected_type: str) -> ProductBluepr
     audience = inputs.audience.strip()
     formats = inputs.format_hints[:3] or [selected_type]
     profile = product_type_profile(selected_type)
-    section_names = list(profile["sections"])
+    section_specs = list(profile["sections"])
     sections = [
         {
-            "title": name,
+            "title": spec["title"],
             "purpose": (
-                f"Use the {selected_type.lower()} format to help the reader move from the stated problem toward the intended outcome, without promising unverified results."
+                f"Use this {selected_type.lower()} section to move the reader from the stated problem toward the intended outcome. "
+                f"The section's specific job is {spec['title'].lower()}. Do not repeat another section's role or content."
             ),
-            "components": list(profile["blocks"]),
+            "components": list(spec["blocks"]),
         }
-        for name in section_names
+        for spec in section_specs
     ]
     return ProductBlueprint.model_validate({
         "title": title,
