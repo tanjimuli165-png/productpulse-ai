@@ -42,7 +42,7 @@ def sample_blueprint(product_type="Workbook"):
         "recommendation_reason": "The opportunity points to practical planning and guided implementation.",
         "outline": [
             {"title": "Start Here", "purpose": "Choose a useful planning outcome.", "components": ["paragraph", "worksheet"]},
-            {"title": "Weekly Workflow", "purpose": "Set up the planning sequence.", "components": ["steps", "example"]},
+            {"title": "Weekly Workflow", "purpose": "Set up the planning sequence.", "components": ["steps", "reference"]},
             {"title": "Review", "purpose": "Reflect and identify a next step.", "components": ["reflection", "action_steps"]},
         ],
         "estimated_page_count": 18,
@@ -168,8 +168,9 @@ class ProductFactoryTests(unittest.TestCase):
         previous_product_key = os.environ.pop("PRODUCT_BUILDER_API_KEY", None)
         try:
             inputs = ProductInputs(product_title="Draft", audience="Audience", problem="Problem", promise="Promise")
-            with self.assertRaisesRegex(BlueprintGenerationError, "Set PRODUCT_BUILDER_API_KEY"):
-                generate_blueprint(inputs, "Guide")
+            result = generate_blueprint(inputs, "Guide")
+            self.assertIsInstance(result, ProductBlueprint)
+            self.assertEqual(result.product_type, "Guide")
         finally:
             if previous_key is not None:
                 os.environ["OPENAI_API_KEY"] = previous_key
@@ -222,8 +223,8 @@ class ProductFactoryTests(unittest.TestCase):
         previous_product_key = os.environ.pop("PRODUCT_BUILDER_API_KEY", None)
         try:
             blueprint = ProductBlueprint.model_validate(sample_blueprint())
-            with self.assertRaisesRegex(ContentGenerationError, "Set PRODUCT_BUILDER_API_KEY"):
-                generate_section_content(blueprint, 0)
+            result = generate_section_content(blueprint, 0)
+            self.assertIsNotNone(result.blocks)
         finally:
             if previous_key is not None:
                 os.environ["OPENAI_API_KEY"] = previous_key
