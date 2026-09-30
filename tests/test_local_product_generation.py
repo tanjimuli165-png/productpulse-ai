@@ -1,5 +1,5 @@
 from app.product.content_generator import generate_section_content
-from app.product.strategy import _local_blueprint
+from app.product.strategy import _local_blueprint, clean_product_inputs
 from app.product.product_schema import ProductInputs
 
 
@@ -42,3 +42,41 @@ def test_meal_prep_local_generation_is_specific_and_section_aware():
         planned = {kind.lower() for kind in blueprint.outline[index].components}
         actual = {block.kind.lower() for block in section.blocks}
         assert actual == planned
+
+
+def test_research_text_cleanup_removes_elongation_and_trims():
+    inputs = ProductInputs(
+        product_title="Meal Prep Clarity Kit",
+        audience="People working on meal prep who say waaayyyyy too much food is left over.",
+        problem="I'm so tired of spending time looking for recipes every week and trying to figure out what to cook.",
+        promise="Make weekly meal prep simpler and clearer.",
+        format_hints=["Workbook"],
+    )
+    cleaned = clean_product_inputs(inputs)
+    assert "waayyyyy" not in cleaned.audience.lower()
+    assert "waay" in cleaned.audience.lower()
+    assert cleaned.problem.startswith("I'm so tired")
+
+
+def test_meal_prep_fallback_is_specific_per_section():
+    inputs = ProductInputs(
+        product_title="Meal Prep Clarity Kit",
+        audience="Busy adults who want a simpler kitchen routine",
+        problem="Meal planning, grocery decisions, and batch cooking feel scattered and time-consuming.",
+        promise="Create a realistic weekly meal-prep routine and make grocery and cooking decisions more clearly.",
+        format_hints=["Workbook"],
+    )
+    blueprint = _local_blueprint(inputs, "Workbook")
+    sections = [generate_section_content(blueprint, i) for i in range(len(blueprint.outline))]
+    section_text = {
+        section.title: " ".join(
+            [block.title, block.body, *block.items, *[" ".join(row) for row in block.rows]]
+        ).lower()
+        for section in sections
+        for block in section.blocks
+    }
+    assert "grocery" in section_text["Baseline"]
+    assert "recipe" in section_text["Guided Lessons"]
+    assert "meal-prep" in section_text["Exercises"] or "meal prep" in section_text["Exercises"]
+    assert "ingredients" in section_text["Worksheets"]
+    assert "unused" in section_text["Review"]
