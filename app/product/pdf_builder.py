@@ -452,6 +452,7 @@ def _content_block_flowables(
     available_width: float,
     accent: colors.Color,
     tint: colors.Color,
+    layout_mode: str = "reading",
 ) -> list[Flowable]:
     result: list[Flowable] = []
     if block.title:
@@ -493,7 +494,16 @@ def _content_block_flowables(
             ),
         ])
     if block.kind in {"exercise", "worksheet", "reflection"}:
-        result.extend([Spacer(1, 5), _ResponseLines(3), Spacer(1, 8)])
+        # Give writing-heavy templates more usable response space while keeping
+        # action-oriented documents compact. This is driven by the saved design
+        # template, so Workbook/Planner/Journal/Worksheet PDFs do not render
+        # their writing areas exactly like an Ebook or Playbook.
+        line_counts = {
+            "worksheet": 6 if layout_mode == "worksheet" else 4,
+            "reflection": 6 if layout_mode == "reflection_prompt" else 4,
+            "exercise": 5 if layout_mode in {"worksheet", "action_worksheet"} else 3,
+        }
+        result.extend([Spacer(1, 5), _ResponseLines(line_counts.get(block.kind, 4)), Spacer(1, 8)])
     if block.kind == "reference":
         for evidence_id in block.evidence_ids:
             reference = evidence_by_id.get(evidence_id)
@@ -677,6 +687,7 @@ def _assemble_pdf(
                 available_width=available_width,
                 accent=accent,
                 tint=tint,
+                layout_mode=template.layout_for(block.kind),
             ))
 
     def decorate_page(canvas, current_doc) -> None:
