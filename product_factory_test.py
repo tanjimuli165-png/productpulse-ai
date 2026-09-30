@@ -1,4 +1,5 @@
 import hashlib
+import hashlib
 import json
 import unittest
 from pathlib import Path
@@ -7,7 +8,7 @@ from types import SimpleNamespace
 
 from app.database.models import Evidence, Opportunity, ProblemSignal, Report
 from app.product.content_generator import ContentGenerationError, SECTION_CONTENT_JSON_SCHEMA, generate_section_content
-from app.product.product_schema import ContentBlock, EvidenceReference, PRODUCT_TYPES, ProductBlueprint, ProductContent, ProductInputs
+from app.product.product_schema import ContentBlock, EvidenceReference, GeneratedSection, PRODUCT_TYPES, ProductBlueprint, ProductContent, ProductInputs
 from app.product.storage import ProductStore
 from app.product.strategy import BlueprintGenerationError, BLUEPRINT_JSON_SCHEMA, generate_blueprint, recommend_product_types
 from app.ui.product_generator import build_product_inputs
@@ -168,6 +169,67 @@ class ProductFactoryTests(unittest.TestCase):
                     opportunity_name="Meal Prep Workbook", source_payload=source, inputs_payload=inputs,
                     blueprint_payload=blueprint,
                 )
+
+    def test_saved_input_changes_invalidate_existing_generated_content(self):
+        with TemporaryDirectory() as directory:
+            store = ProductStore(Path(directory) / "test.db")
+            blueprint = ProductBlueprint.model_validate(sample_blueprint())
+            blueprint_payload = blueprint.model_dump(mode="json")
+            input_payload = {
+                "product_title": "Meal Prep Workbook",
+                "audience": "People planning meals",
+                "problem": "Weekly meal planning takes too much time.",
+                "promise": "Create a repeatable weekly meal-prep routine.",
+            }
+            saved = store.save(
+                product_id="p-input-change",
+                user_id="user-a",
+                source_report_id="report-1",
+                opportunity_index=0,
+                opportunity_name="Meal Prep Workbook",
+                source_payload={},
+                inputs_payload=input_payload,
+                blueprint_payload=blueprint_payload,
+                status="approved",
+            )
+            fingerprint = hashlib.sha256(
+                json.dumps(blueprint_payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+            ).hexdigest()
+            content = ProductContent(
+                product_title=blueprint.title,
+                blueprint_fingerprint=fingerprint,
+                sections=[
+                    GeneratedSection(
+                        section_index=0,
+                        title=blueprint.outline[0].title,
+                        purpose=blueprint.outline[0].purpose,
+                        blocks=[ContentBlock(kind="paragraph", title="Grounded content", body="Meal planning content.")],
+                    ),
+                ],
+            )
+            store.save_content(
+                product_id="p-input-change",
+                user_id="user-a",
+                content_payload=content.model_dump(mode="json"),
+                change_summary="Initial generated content",
+            )
+            changed = dict(input_payload)
+            changed["promise"] = "Create a faster weekly meal-prep routine."
+            updated = store.save(
+                product_id="p-input-change",
+                user_id="user-a",
+                source_report_id="report-1",
+                opportunity_index=0,
+                opportunity_name="Meal Prep Workbook",
+                source_payload={},
+                inputs_payload=changed,
+                blueprint_payload=blueprint_payload,
+                status="draft",
+                change_summary="Updated product inputs",
+            )
+            self.assertEqual(updated["status"], "draft")
+            self.assertIsNone(updated["content_payload"])
+
 
     def test_missing_provider_credentials_returns_setup_error(self):
         import os
