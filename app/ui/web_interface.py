@@ -261,6 +261,20 @@ def _build_research_audit(
     """Create a transparent research-readiness audit without inventing a demand score."""
     source_names = sorted({item.source for item in reportable_evidence if item.source})
     contributors = count_identified_contributors(reportable_evidence)
+    corroborated_problems = [
+        problem for problem in problems
+        if (problem.evidence_items or 0) >= 2
+    ]
+    cross_source_problems = []
+    for problem in problems:
+        evidence_urls = set(problem.evidence_urls)
+        matched_sources = {
+            item.source
+            for item in reportable_evidence
+            if item.url and item.url in evidence_urls and item.source
+        }
+        if len(matched_sources) >= 2:
+            cross_source_problems.append(problem)
     checks = [
         {
             "name": "Eligible evidence records",
@@ -279,6 +293,26 @@ def _build_research_audit(
             "status": "PASS" if problems else "FLAG",
             "message": f"{len(problems)} problem-language group(s) were extracted from eligible evidence.",
             "limitation": "Extracted language is heuristic and does not prove recurrence among people.",
+        },
+        {
+            "name": "Problem corroboration across evidence records",
+            "status": "PASS" if corroborated_problems else "REVIEW",
+            "message": (
+                f"{len(corroborated_problems)} problem-language group(s) are supported by at least two distinct evidence records."
+                if corroborated_problems
+                else "No problem-language group currently has two or more distinct supporting evidence records."
+            ),
+            "limitation": "Distinct source records are not proof of distinct people, recurrence over time, or causal importance.",
+        },
+        {
+            "name": "Problem corroboration across source types",
+            "status": "PASS" if cross_source_problems else "REVIEW",
+            "message": (
+                f"{len(cross_source_problems)} problem-language group(s) have evidence from at least two source types."
+                if cross_source_problems
+                else "No extracted problem-language group is currently linked to evidence from two or more source types."
+            ),
+            "limitation": "Source-type diversity improves triangulation but can still reflect the same underlying conversation or copied information.",
         },
         {
             "name": "Source-local contributor identifiers",
@@ -307,7 +341,19 @@ def _build_research_audit(
             "limitation": "Listing presence, price, ratings, and review snippets are not proof of demand or sales.",
         },
     ]
+    core_research_ready = bool(
+        len(reportable_evidence) >= 5
+        and len(source_names) >= 2
+        and problems
+        and corroborated_problems
+        and (marketplace_gaps or (gap_analysis.get("status") == "observed" and gap_analysis.get("gaps")))
+    )
     return {
+        "research_status": (
+            "Sufficient research basis for product exploration"
+            if core_research_ready
+            else "More evidence needed before treating this opportunity as research-ready"
+        ),
         "checks": checks,
         "source_types": source_names,
         "eligible_evidence_count": len(reportable_evidence),
