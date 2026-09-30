@@ -11,7 +11,11 @@ ARCHITECT_NAMES = ["Clarity Kit", "Action System", "Prompt & Template Lab", "Dec
 def architect_opportunities(topic: str, problems: List[ProblemSignal], spending: Dict, gaps: Dict, evidence_count: int, marketplace_gaps: List[MarketplaceGap] | None = None) -> List[Opportunity]:
     opportunities = []
     has_observed_gap = gaps.get("status") == "observed" and bool(gaps.get("gaps"))
-    base_gap = min(1.0, 0.35 + gaps.get("score", 0.0)) if has_observed_gap else 0.5
+    observed_gap_score = min(1.0, max(0.0, float(gaps.get("score") or 0.0)))
+    # No marketplace-gap credit is inferred when gap evidence is absent.
+    # When a gap is observed, use only the evidence-derived gap signal; do not
+    # add an arbitrary positive baseline that could inflate the opportunity heuristic.
+    base_gap = observed_gap_score if has_observed_gap else 0.0
     gap_status = "observed" if has_observed_gap else "insufficient_evidence"
     market_context: list[str] = []
     for listing in (marketplace_gaps or [])[:8]:
