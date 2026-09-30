@@ -41,6 +41,15 @@ def _set_example(topic: str) -> None:
     st.session_state["topic_input"] = topic
 
 
+def _select_auth_token(context_cookies, component_cookies=None, *, context_available: bool) -> str | None:
+    """Prefer request cookies on refresh; use the component only when request context is unavailable."""
+    if context_available:
+        token = (context_cookies or {}).get(AUTH_COOKIE)
+        return token if isinstance(token, str) and token else None
+    token = (component_cookies or {}).get(AUTH_COOKIE)
+    return token if isinstance(token, str) and token else None
+
+
 def _restore_cookie_session(store: ReportStore, cookies: stx.CookieManager) -> None:
     """Restore the server-side session after a browser refresh/reconnect."""
     if st.session_state.get("auth_user"):
@@ -50,19 +59,23 @@ def _restore_cookie_session(store: ReportStore, cookies: stx.CookieManager) -> N
     # cookies sent with the initial request. Treat that source as authoritative
     # so an asynchronous CookieManager component cannot race the login view.
     context_available = False
-    token = None
+    context_cookies = None
     try:
         context_cookies = st.context.cookies
         context_available = True
-        token = context_cookies.get(AUTH_COOKIE)
     except (AttributeError, RuntimeError):
         pass
 
+    component_cookies = None
     if not context_available:
         try:
-            token = cookies.get_all(key="restore_auth_cookie").get(AUTH_COOKIE)
+            component_cookies = cookies.get_all(key="restore_auth_cookie")
         except Exception:
-            token = None
+            component_cookies = None
+
+    token = _select_auth_token(
+        context_cookies, component_cookies, context_available=context_available
+    )
 
     if token:
         user = store.authenticate_session(token)
