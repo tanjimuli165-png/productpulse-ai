@@ -447,6 +447,25 @@ def run_product_qa(
                          f"Product type: {blueprint.product_type}. Applicable component expectations: {', '.join(sorted(expected_kinds)) or 'no type-specific rule configured'}.",
                          "Small explicit type-to-block rule map; does not decide whether a type choice is strategically correct.", type_issues))
 
+    component_issues = []
+    for section in sorted(content.sections, key=lambda item: item.section_index):
+        outline_section = expected.get(section.section_index)
+        if not outline_section:
+            continue
+        planned = {str(kind).strip().lower() for kind in outline_section.components}
+        actual_kinds = {block.kind.strip().lower() for block in section.blocks}
+        missing_components = sorted(planned - actual_kinds)
+        if missing_components:
+            component_issues.append(
+                f"Section {section.section_index + 1} ({section.title}) is missing planned component(s): {', '.join(missing_components)}."
+            )
+    checks.append(_check(
+        "Section component coverage", "Product fit", "FLAG" if component_issues else "PASS",
+        "Compared every saved section with the exact content components planned in its approved blueprint.",
+        "Case-insensitive set comparison of planned component kinds against saved structured block kinds; it checks presence, not quality or usefulness.",
+        component_issues,
+    ))
+
     practical_sections = {"workbook", "planner", "tracker", "worksheet", "action plan", "challenge", "playbook"}
     if blueprint.product_type.lower() in practical_sections and not (blueprint.exercises or blueprint.worksheets or blueprint.templates or blueprint.checklists):
         practical_issues = [f"Blueprint lists no exercises, worksheets, templates, or checklists for this {blueprint.product_type.lower()} concept; review whether additional practical material is needed."]
