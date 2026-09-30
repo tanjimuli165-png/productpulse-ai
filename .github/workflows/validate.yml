@@ -41,7 +41,6 @@ jobs:
 
       - name: Smoke-test Streamlit entrypoint
         run: |
-          python -m pip install --quiet curl-cffi
           streamlit run streamlit_app.py --server.headless true --server.address 127.0.0.1 --server.port 8501 > /tmp/productpulse-streamlit.log 2>&1 &
           pid=$!
           trap 'kill $pid 2>/dev/null || true' EXIT
