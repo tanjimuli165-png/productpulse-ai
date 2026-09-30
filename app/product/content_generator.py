@@ -102,7 +102,7 @@ def _meal_prep_local_section_content(
                 items=[
                     "Meals I actually need to plan for this week:",
                     "Recipes or meals I already know I will eat:",
-                    "Groceries I usually forget or overbuy:",
+                    "Grocery list items I usually forget or overbuy:",
                     "Prep or cooking time I can realistically use:",
                     "Food I often end up wasting or not enjoying:",
                 ],
