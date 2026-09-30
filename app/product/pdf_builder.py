@@ -631,6 +631,9 @@ def _assemble_pdf(
         subject="Research-backed product concept · evidence-supported hypothesis worth validating",
         author="AI Digital Product Factory",
         pageCompression=1,
+        # Keep the assembled PDF byte-stable so Final Verification can bind its
+        # SHA-256 to the exact file that will later be downloaded.
+        invariant=1,
     )
 
     toc = TableOfContents()
