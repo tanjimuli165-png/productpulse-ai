@@ -719,7 +719,7 @@ def _render_template_engine(
     st.subheader("Live product preview")
     st.caption("The preview below reflects the saved cover and section edits, selected template/page size, and saved visuals.")
     height = min(4200, max(900, 780 * (len(content.sections) + 1)))
-    components.html(html, height=height, scrolling=True)
+    st.iframe(html, height=height)
 
 
 def _render_quality_assurance(
