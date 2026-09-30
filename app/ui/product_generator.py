@@ -967,8 +967,15 @@ def _render_pdf_export(product_store: ProductStore, user_id: str, product_id: st
         final_verified_current = False
 
     if final_verified_current:
+        verified_pdf_sha256 = latest_result.get("verified_pdf_sha256")
+        current_pdf_sha256 = hashlib.sha256(export.pdf_bytes).hexdigest()
+        final_verified_current = bool(
+            verified_pdf_sha256 and verified_pdf_sha256 == current_pdf_sha256
+        )
+
+    if final_verified_current:
         st.success("FINAL DOWNLOAD UNLOCKED")
-        st.caption("This download matches the saved snapshot that passed Final verification.")
+        st.caption("This download matches the exact PDF bytes that passed Final verification.")
     else:
         st.warning("FINAL DOWNLOAD LOCKED")
         st.caption("Required sequence: 1) save the current product → 2) Automated QA PASS → 3) Final verification PASS → 4) download.")
