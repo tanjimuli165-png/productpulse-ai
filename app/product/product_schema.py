@@ -55,6 +55,7 @@ class EvidenceReference(BaseModel):
     source_title: str
     source_type: str
     customer_language: str
+    source_excerpt: str = Field(default="", max_length=1200)
     url: str = ""
 
 
