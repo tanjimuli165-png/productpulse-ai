@@ -658,7 +658,11 @@ def _assemble_pdf(
     ])
     ordered_sections = sorted(content.sections, key=lambda section: section.section_index)
     for index, section in enumerate(ordered_sections, start=1):
-        story.extend([PageBreak(), _paragraph(f"{index:02d} · {section.title}", styles["SectionHeading"])])
+        # Start a new page only when the remaining space is too small for a
+        # useful section opening. This avoids large blank areas caused by a
+        # forced PageBreak while still keeping headings away from the footer.
+        story.append(CondPageBreak(2.25 * inch))
+        story.append(_paragraph(f"{index:02d} · {section.title}", styles["SectionHeading"]))
         story.append(_paragraph(section.purpose, styles["Purpose"]))
         for asset in placements.get(f"section:{section.section_index}", []):
             story.extend(_visual_flowables(asset, styles, available_width))
@@ -826,7 +830,7 @@ def export_saved_product_pdf(product_id: str, user_id: str, store: ProductStore)
         latest_qa_created_at=(latest_qa or {}).get("created_at"),
         qa_history_unavailable=qa_history_unavailable,
         limitations=(
-            "Structural preflight plus low-resolution visual smoke testing are required; the visual checks are heuristic and are not a human page-by-page design review.",
+            "Structural preflight plus low-resolution visual smoke testing are required; smart section breaks reduce avoidable blank space, while the visual checks remain heuristic and are not a human page-by-page design review.",
             "Automated QA must pass and match the current snapshot before export; PDF preflight additionally checks for empty and near-duplicate consecutive pages. Visual typography, exact overflow, color, accessibility, and reader-specific rendering still require human review.",
             "Bangla paragraphs use HarfBuzz-shaped Noto-compatible fonts when the optional Bangla PDF font package can initialize; if a compatible runtime font is unavailable, the PDF falls back safely to the existing base fonts and should be manually reviewed for non-Latin glyph coverage.",
             "A passing preflight or saved QA result does not guarantee accuracy, usefulness, safety, demand, sales, commercial success, or an error-free PDF.",
