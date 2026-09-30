@@ -307,14 +307,14 @@ class ProductQATests(unittest.TestCase):
         inputs_b = inputs_a.model_copy(update={"promise": inputs_a.promise + " Add a concrete weekly review step."})
 
         first = qa_snapshot_fingerprint(
-            blueprint(),
-            content(),
+            sample_blueprint(),
+            sample_content(),
             inputs=inputs_a,
             design={"template_id": "minimal_professional", "page_size": "letter"},
         )
         second = qa_snapshot_fingerprint(
-            blueprint(),
-            content(),
+            sample_blueprint(),
+            sample_content(),
             inputs=inputs_b,
             design={"template_id": "minimal_professional", "page_size": "letter"},
         )
