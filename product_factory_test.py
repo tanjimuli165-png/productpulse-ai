@@ -574,10 +574,14 @@ class ProductFactoryTests(unittest.TestCase):
             promise="Create a repeatable weekly meal-prep routine.",
         )
         with patch.dict(os.environ, {"OPENAI_API_KEY": "", "PRODUCT_BUILDER_API_KEY": ""}):
-            with self.assertRaises(ContentGenerationError):
-                generate_section_content(
-                    blueprint, 0, [], client=None, product_inputs=inputs
-                )
+            with patch(
+                "app.product.content_generator._validate_content_grounding",
+                side_effect=ValueError("grounding test failure"),
+            ):
+                with self.assertRaises(ContentGenerationError):
+                    generate_section_content(
+                        blueprint, 0, [], client=None, product_inputs=inputs
+                    )
 
     def test_missing_provider_credentials_returns_content_setup_error(self):
         import os
