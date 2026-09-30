@@ -451,6 +451,19 @@ GROUNDING_STOP_WORDS = {
     "things", "really", "want", "needs", "need", "will", "would", "only", "very",
 }
 
+# Product-format and section-stage words are useful metadata, but they are not
+# distinctive evidence that a provider actually understood the product topic.
+PRODUCT_GROUNDING_STOP_WORDS = {
+    "digital", "product", "workbook", "worksheet", "worksheets", "planner", "guide",
+    "playbook", "template", "templates", "kit", "bundle", "resource", "resources",
+}
+SECTION_GENERIC_WORDS = {
+    "baseline", "review", "lesson", "lessons", "exercise", "exercises", "worksheet",
+    "worksheets", "introduction", "intro", "overview", "setup", "start", "instructions",
+    "core", "main", "apply", "practice", "next", "completion", "result", "progress",
+    "reflection", "action",
+}
+
 def _content_grounding_terms(value: str) -> list[str]:
     result: list[str] = []
     for word in re.findall(r"[^\W_]+", (value or "").lower(), flags=re.UNICODE):
@@ -467,6 +480,20 @@ def _content_grounding_stem(value: str) -> str:
             token = token[:-len(suffix)]
             break
     return token
+
+
+def _product_grounding_terms(value: str) -> list[str]:
+    return [
+        term for term in _content_grounding_terms(value)
+        if term not in PRODUCT_GROUNDING_STOP_WORDS
+    ]
+
+
+def _section_focus_terms(section: BlueprintSection) -> list[str]:
+    return [
+        term for term in _content_grounding_terms(section.purpose)
+        if term not in SECTION_GENERIC_WORDS
+    ]
 
 
 def _matched_grounding_terms(source_terms: list[str], target_text: str) -> set[str]:
@@ -496,19 +523,40 @@ def _validate_content_grounding(
         ]
         if fragment and fragment.strip()
     )
+    product_terms = _product_grounding_terms(product_inputs.product_title)
     problem_terms = _content_grounding_terms(product_inputs.problem)
     outcome_terms = _content_grounding_terms(product_inputs.promise or blueprint.desired_outcome)
+    section_focus_terms = _section_focus_terms(section)
+
+    product_matches = _matched_grounding_terms(product_terms, generated_text)
     problem_matches = _matched_grounding_terms(problem_terms, generated_text)
     outcome_matches = _matched_grounding_terms(outcome_terms, generated_text)
+    focus_body_text = " ".join(
+        fragment
+        for block in generated.blocks
+        if block.kind != "reference"
+        for fragment in [
+            block.body,
+            *block.items,
+            *[cell for row in block.rows for cell in row],
+        ]
+        if fragment and fragment.strip()
+    )
+    section_focus_matches = _matched_grounding_terms(section_focus_terms, focus_body_text)
+
     missing: list[str] = []
+    if product_terms and not product_matches:
+        missing.append("the product topic")
     if problem_terms and not problem_matches:
         missing.append("the approved problem")
     if outcome_terms and not outcome_matches:
         missing.append("the desired outcome")
+    if section_focus_terms and not section_focus_matches:
+        missing.append("the section purpose")
     if missing:
         raise ValueError(
             "Generated content grounding check failed: "
-            + " and ".join(missing)
+            + ", ".join(missing)
             + " concepts were not represented in this section. Regenerate this section so the saved content stays specific to the approved product."
         )
 
