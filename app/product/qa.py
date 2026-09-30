@@ -270,6 +270,35 @@ def _preview_checks(preview_html: str | None, content: ProductContent, design: d
     return results
 
 
+
+def _stem(value: str) -> str:
+    token = re.sub(r"[^a-z0-9]", "", (value or "").lower())
+    for suffix in ("ization", "ations", "ation", "ments", "ment", "ingly", "edly", "ing", "ers", "ies", "es", "ed", "s"):
+        if len(token) > len(suffix) + 3 and token.endswith(suffix):
+            token = token[:-len(suffix)]
+            break
+    return token
+
+
+def _concept_coverage(source_text: str, target_text: str) -> tuple[int, int, set[str]]:
+    source_terms = sorted(_tokens(source_text))
+    target_terms = _tokens(target_text)
+    target_stems = {_stem(term) for term in target_terms}
+    matched = []
+    for term in source_terms:
+        stem = _stem(term)
+        if term in target_terms or stem in target_stems:
+            matched.append(term)
+    return len(matched), len(source_terms), set(matched)
+
+
+def _distinct_reference_terms(reference_material: str) -> set[str]:
+    return _tokens(reference_material) - {
+        "provided", "reference", "material", "notes", "source", "example", "examples",
+        "product", "digital", "information", "content", "reader", "use", "using",
+    }
+
+
 def run_product_qa(
     blueprint: ProductBlueprint,
     content: ProductContent,
@@ -398,38 +427,119 @@ def run_product_qa(
         "Length/phrase heuristics only; concise prompts can be intentional and clarity requires a human reader.", instruction_issues,
     ))
 
-    problem_terms = _tokens(inputs.problem)
-    product_terms = _tokens(" ".join([section.title + " " + section.purpose for section in content.sections] + [text for _, text, _ in blocks]))
-    overlap = len(problem_terms & product_terms) / len(problem_terms) if problem_terms else None
-    fit_issues = []
-    if overlap is None:
-        fit_status = "NOT RUN"
-        fit_message = "The researched problem has no usable terms for a basic text-overlap comparison."
-    elif overlap < 0.15:
-        fit_status = "FLAG"
-        fit_issues.append(f"Only {len(problem_terms & product_terms)} of {len(problem_terms)} non-stopword problem terms appear in the saved content; review whether the content addresses the researched problem “{inputs.problem[:180]}”.")
-        fit_message = "A low lexical overlap is a prompt for human review, not a measure of semantic relevance."
-    else:
-        fit_status = "PASS"
-        fit_message = f"Found {len(problem_terms & product_terms)} of {len(problem_terms)} non-stopword problem terms in content; lexical overlap does not prove problem fit."
-    checks.append(_check("Researched-problem alignment", "Product fit", fit_status, fit_message,
-                         "Case-insensitive token overlap after a small stop-word filter; synonyms, context, and meaning are not evaluated.", fit_issues))
+    content_text = " ".join(
+        [section.title + " " + section.purpose for section in content.sections]
+        + [text for _, text, _ in blocks]
+    )
 
-    outcome_terms = _tokens(blueprint.desired_outcome)
-    outcome_overlap = outcome_terms & product_terms
-    outcome_issues = []
-    if not outcome_terms:
-        outcome_status = "NOT RUN"
-        outcome_message = "The blueprint has no usable desired-outcome terms for a text comparison."
-    elif len(outcome_overlap) < min(2, len(outcome_terms)):
-        outcome_status = "FLAG"
-        outcome_issues.append(f"The saved content uses only {len(outcome_overlap)} of {len(outcome_terms)} non-stopword desired-outcome terms; make the intended outcome explicit or review this wording.")
-        outcome_message = "Basic wording overlap only; it does not determine whether an outcome is clear to a reader."
+    problem_match_count, problem_total, _problem_matched = _concept_coverage(inputs.problem, content_text)
+    if problem_total == 0:
+        problem_status = "REVIEW"
+        problem_message = "No distinctive problem concepts were available for deterministic coverage analysis."
+        problem_issues = ["Review the researched problem manually and confirm that the saved sections directly address it."]
     else:
-        outcome_status = "PASS"
-        outcome_message = f"Found {len(outcome_overlap)} desired-outcome terms in the content; this does not establish that the outcome is clear or achievable."
-    checks.append(_check("Clear-outcome wording", "Product fit", outcome_status, outcome_message,
-                         "Case-insensitive token overlap; does not judge whether an outcome is meaningful, achievable, or supported.", outcome_issues))
+        problem_ratio = problem_match_count / problem_total
+        problem_status = "PASS" if problem_ratio >= 0.30 else "REVIEW"
+        problem_message = f"Matched {problem_match_count} of {problem_total} problem concepts using exact and simple morphological matching."
+        problem_issues = [] if problem_status == "PASS" else [
+            f"Only {problem_match_count} of {problem_total} problem concepts were found. Review whether the content addresses the researched problem rather than merely sharing its wording."
+        ]
+    checks.append(_check(
+        "Problem concept coverage", "Product fit", problem_status,
+        problem_message,
+        "Deterministic exact/stem-aware term coverage; this is a relevance signal, not semantic proof.", problem_issues,
+    ))
+
+    outcome_match_count, outcome_total, _outcome_matched = _concept_coverage(blueprint.desired_outcome, content_text)
+    if outcome_total == 0:
+        outcome_status = "REVIEW"
+        outcome_message = "No distinctive desired-outcome concepts were available for deterministic coverage analysis."
+        outcome_issues = ["Review whether the product content makes the intended reader outcome clear."]
+    else:
+        outcome_ratio = outcome_match_count / outcome_total
+        outcome_status = "PASS" if outcome_ratio >= min(0.45, 2 / max(1, outcome_total)) else "REVIEW"
+        outcome_message = f"Matched {outcome_match_count} of {outcome_total} desired-outcome concepts using exact and simple morphological matching."
+        outcome_issues = [] if outcome_status == "PASS" else [
+            f"Only {outcome_match_count} of {outcome_total} outcome concepts were found. Review whether the saved activities actually lead toward the stated outcome."
+        ]
+    checks.append(_check(
+        "Outcome concept coverage", "Product fit", outcome_status,
+        outcome_message,
+        "Deterministic exact/stem-aware term coverage; this is a relevance signal, not an achievement guarantee.", outcome_issues,
+    ))
+
+    reference_terms = _distinct_reference_terms(inputs.reference_material)
+    reference_matches = sorted(reference_terms & _tokens(content_text))
+    if inputs.reference_material.strip():
+        reference_status = "PASS" if reference_matches else "REVIEW"
+        reference_issues = [] if reference_matches else [
+            "Creator/reference material was supplied, but no distinctive terms were found in saved content. Recheck that the generated product actually uses the supplied material."
+        ]
+        reference_message = f"Found {len(reference_matches)} distinctive supplied-material term(s) in saved product text."
+    else:
+        reference_status = "PASS"
+        reference_issues = []
+        reference_message = "No extra creator/reference material was supplied; this check has no additional requirement."
+    checks.append(_check(
+        "Creator material usage", "Product fit / evidence", reference_status,
+        reference_message,
+        "Exact distinctive-term presence only; it does not prove correct interpretation of supplied material.", reference_issues,
+    ))
+
+    if inputs.research_backed:
+        evidence_count = len(inputs.evidence)
+        evidence_status = "PASS" if evidence_count else "FLAG"
+        evidence_issues = [] if evidence_count else [
+            "This product came from a research-backed opportunity, but no linked evidence record was carried into the builder. Re-run or re-link the research before publication."
+        ]
+        evidence_message = f"{evidence_count} linked evidence reference(s) are attached to the product inputs."
+    else:
+        evidence_count = len(inputs.evidence)
+        evidence_status = "PASS"
+        evidence_issues = []
+        evidence_message = f"Creator-topic mode: {evidence_count} supplied reference record(s) are attached; independent market evidence is not claimed."
+    checks.append(_check(
+        "Research evidence readiness", "Research / evidence", evidence_status,
+        evidence_message,
+        "Counts source references carried into the product builder; it does not assess source quality, independence, or truth.", evidence_issues,
+    ))
+
+    if inputs.research_backed:
+        market_status = "PASS" if inputs.market_context else "REVIEW"
+        market_issues = [] if inputs.market_context else [
+            "No marketplace/listing context was attached. Similar-seller comparison is not verified in this product snapshot."
+        ]
+        market_message = (
+            f"{len(inputs.market_context)} comparable marketplace/listing record(s) are attached for review."
+            if inputs.market_context
+            else "Marketplace comparison data is unavailable for this opportunity."
+        )
+        diff_status = "PASS" if inputs.differentiation else "REVIEW"
+        diff_issues = [] if inputs.differentiation else [
+            "No explicit differentiation statement is recorded. Compare the finished product directly with observed alternatives before publishing positioning claims."
+        ]
+        diff_message = (
+            f"{len(inputs.differentiation)} differentiation statement(s) are recorded."
+            if inputs.differentiation
+            else "No explicit differentiation statement is recorded."
+        )
+    else:
+        market_status, market_message, market_issues = "PASS", "Creator-topic mode: independent market comparison was not run.", []
+        diff_status = "PASS"
+        diff_message = f"{len(inputs.differentiation)} differentiation statement(s) supplied by the creator."
+        diff_issues = []
+    checks.append(_check(
+        "Market comparison context", "Research / competition", market_status,
+        market_message,
+        "Presence/absence check on attached seller/listing context; listing presence does not prove a gap, demand, or sales.",
+        market_issues,
+    ))
+    checks.append(_check(
+        "Differentiation captured", "Product fit / competition", diff_status,
+        diff_message,
+        "Presence check only; meaningful differentiation still requires evidence-grounded side-by-side comparison.",
+        diff_issues,
+    ))
 
     action_kinds = {block.kind for _, _, block in blocks if block.kind in {"steps", "action_steps", "checklist", "exercise", "worksheet", "table", "reflection"}}
     actionable_issues = []
