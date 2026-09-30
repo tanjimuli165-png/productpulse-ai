@@ -317,6 +317,7 @@ def _render_content_editor(
     blueprint: ProductBlueprint,
     evidence: list[EvidenceReference],
     reference_material: str = "",
+    product_inputs: ProductInputs | None = None,
 ) -> None:
     """Provide compact, structured text editing and one-section regeneration."""
     st.divider()
@@ -418,7 +419,13 @@ def _render_content_editor(
                 help="Replaces only this section with newly generated content; other saved sections remain unchanged.",
             ):
                 try:
-                    generated = generate_section_content(blueprint, section.section_index, evidence, reference_material)
+                    generated = generate_section_content(
+                        blueprint,
+                        section.section_index,
+                        evidence,
+                        reference_material,
+                        product_inputs=product_inputs,
+                    )
                     updated = replace_content_section(content, generated)
                     product_store.save_content(
                         product_id=product_id, user_id=user_id,
@@ -1030,7 +1037,13 @@ def _render_content_generation(
     if remaining and action_cols[0].button("Generate next section", type="primary", key=f"product_{product_id}_generate_next"):
         next_index = remaining[0]
         try:
-            generated = generate_section_content(blueprint, next_index, inputs.evidence, inputs.reference_material)
+            generated = generate_section_content(
+                blueprint,
+                next_index,
+                inputs.evidence,
+                inputs.reference_material,
+                product_inputs=inputs,
+            )
             updated = ProductContent(
                 product_title=content.product_title,
                 subtitle=content.subtitle,
@@ -1061,7 +1074,13 @@ def _render_content_generation(
                         section = blueprint.outline[section_index]
                         st.write(f"Generating {position} of {len(remaining)}: {section.title}")
                         try:
-                            generated = generate_section_content(blueprint, section_index, inputs.evidence, inputs.reference_material)
+                            generated = generate_section_content(
+                                blueprint,
+                                section_index,
+                                inputs.evidence,
+                                inputs.reference_material,
+                                product_inputs=inputs,
+                            )
                             current_sections.append(generated)
                             snapshot = ProductContent(
                                 product_title=content.product_title,
@@ -1099,7 +1118,14 @@ def _render_content_generation(
 
     if content.sections:
         _render_content_editor(
-            product_store, user_id, product_id, content, blueprint, inputs.evidence, inputs.reference_material
+            product_store,
+            user_id,
+            product_id,
+            content,
+            blueprint,
+            inputs.evidence,
+            inputs.reference_material,
+            product_inputs=inputs,
         )
         _render_template_engine(
             product_store, user_id, product_id, content, blueprint, inputs.evidence, saved_product
