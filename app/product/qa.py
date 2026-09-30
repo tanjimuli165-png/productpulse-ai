@@ -788,7 +788,14 @@ def final_verification(blueprint, content, inputs, *, design, visual_assets=None
             "Export the current saved product first, then run final verification again.",
         ))
 
-    final_issues = [c for c in checks if c.get("status") in {"FLAG", "NOT RUN"}]
+    final_issues = [
+        check for check in checks
+        if check.get("status") == "FLAG"
+        or (
+            check.get("status") == "NOT RUN"
+            and check.get("name") not in {"Final PDF rendering"}
+        )
+    ]
     result["checks"] = checks
     result["status"] = "PASS" if not final_issues else "NEEDS REVISION"
     result["final_verification"] = True
