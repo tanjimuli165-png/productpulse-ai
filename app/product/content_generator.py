@@ -157,10 +157,28 @@ def _local_section_content(
     blocks: list[dict[str, Any]] = []
     for kind in planned:
         if kind == "paragraph":
+            paragraph_bodies = {
+                "setup": (
+                    f"Start by making the current {focus} situation visible for {audience}. "
+                    f"Capture the starting point, constraints, and what useful progress toward {outcome_focus} would look like."
+                ),
+                "practice": (
+                    f"Use this section to work through the {section.title.lower()} method with {audience}. "
+                    f"Keep {focus} connected to the intended direction of {outcome_focus}, and note where the method is clear or difficult to apply."
+                ),
+                "apply": (
+                    f"Turn the ideas in {section.title.lower()} into a concrete output for {audience}. "
+                    f"Address {focus} directly, keep the target of {outcome_focus} visible, and record any assumption that needs another test."
+                ),
+                "review": (
+                    f"Use this section to inspect what actually happened after working on {focus}. "
+                    f"Compare the observed result with {outcome_focus}, separate evidence from interpretation, and decide what should change next."
+                ),
+            }
             blocks.append(block(
                 "paragraph",
                 f"{section.title}: focused context",
-                f"For {audience}, keep {focus} in view while completing this section. Connect the work to {outcome_focus}, use concrete examples from your own situation, and mark any assumption that still needs evidence or testing.",
+                paragraph_bodies[section_stage],
             ))
 
         elif kind in {"steps", "action_steps"}:
@@ -200,23 +218,62 @@ def _local_section_content(
             ))
 
         elif kind == "checklist":
+            checklist_items = {
+                "setup": [
+                    f"I wrote down a specific starting situation involving {focus}.",
+                    "I recorded the main constraint or missing input.",
+                    f"I defined what useful progress toward {outcome_focus} would look like.",
+                    "I marked assumptions that still need evidence.",
+                ],
+                "practice": [
+                    f"I worked through one example involving {focus}.",
+                    f"I followed the {section.title.lower()} method rather than only reading it.",
+                    "I noted where the method was unclear or difficult to apply.",
+                    "I recorded one adjustment for the next example.",
+                ],
+                "apply": [
+                    f"I created or completed the expected output for {section.title.lower()}.",
+                    f"I addressed a concrete part of {focus}.",
+                    f"I checked the output against {outcome_focus}.",
+                    "I recorded what still needs testing or refinement.",
+                ],
+                "review": [
+                    "I reviewed what actually happened, not just what I expected to happen.",
+                    f"I identified evidence relevant to {focus}.",
+                    f"I compared the result with {outcome_focus}.",
+                    "I chose one change or follow-up check for the next cycle.",
+                ],
+            }
             blocks.append(block(
                 "checklist",
                 f"{section.title}: completion check",
                 "Mark an item only after the work is actually complete.",
-                items=[
-                    f"I used a real example involving {focus}.",
-                    f"I completed the {section.title.lower()} task rather than only reading it.",
-                    f"I recorded progress or an output related to {outcome_focus}.",
-                    "I marked any uncertainty that still needs evidence or testing.",
-                ],
+                items=checklist_items[section_stage],
             ))
 
         elif kind == "example":
+            example_openers = {
+                "setup": (
+                    f"Hypothetical example: a {audience.lower()} reader first maps a real situation involving {focus}. "
+                    f"They define a practical target related to {outcome_focus} before choosing what to change."
+                ),
+                "practice": (
+                    f"Hypothetical example: while working on {topic.lower()}, a {audience.lower()} reader applies the {section.title.lower()} method to one real case. "
+                    "They note what was useful, where the method broke down, and what they would try next."
+                ),
+                "apply": (
+                    f"Hypothetical example: a {audience.lower()} reader turns the {section.title.lower()} work into a concrete output addressing {focus}. "
+                    f"They check it against {outcome_focus} and record what still needs refinement."
+                ),
+                "review": (
+                    f"Hypothetical example: after working on {topic.lower()}, a {audience.lower()} reader reviews what changed around {focus}. "
+                    f"They compare the observed result with {outcome_focus} and choose a small next adjustment."
+                ),
+            }
             blocks.append(block(
                 "example",
                 f"{section.title}: illustrative example",
-                f"Hypothetical example: a reader working on {topic.lower()} notices that {problem.lower()}. They use the {section.title.lower()} approach, record what changed, and decide what to test next. This is illustrative only and is not evidence that the same result will occur for everyone.",
+                example_openers[section_stage] + " This example is illustrative only and is not evidence that the same result will occur for everyone.",
             ))
 
         elif kind == "exercise":
@@ -233,17 +290,41 @@ def _local_section_content(
             ))
 
         elif kind == "worksheet":
+            worksheet_items = {
+                "setup": [
+                    f"My current situation involving {focus}:",
+                    "Constraints, resources, or missing information:",
+                    f"My target for useful progress toward {outcome_focus}:",
+                    "What I can realistically do first:",
+                    "What I still need to verify:",
+                ],
+                "practice": [
+                    f"Example I am working through for {focus}:",
+                    f"The {section.title.lower()} method I am applying:",
+                    "What I observed while applying it:",
+                    "What I would change on the next example:",
+                    f"How this supports {outcome_focus}:",
+                ],
+                "apply": [
+                    "The concrete output I need to create:",
+                    f"The part of {focus} this output addresses:",
+                    "Action, decision, or material completed:",
+                    f"Evidence that the output supports {outcome_focus}:",
+                    "What still needs testing or refinement:",
+                ],
+                "review": [
+                    f"What actually happened while addressing {focus}:",
+                    "What helped and what created friction:",
+                    f"What the result suggests about {outcome_focus}:",
+                    "Which assumption remains unverified:",
+                    "The next change I will test:",
+                ],
+            }
             blocks.append(block(
                 "worksheet",
                 f"{section.title}: working page",
-                f"Complete these prompts using your own {topic.lower()} context.",
-                items=[
-                    f"My situation related to {section.title.lower()}:",
-                    f"The part of the problem I am addressing ({focus}):",
-                    "The action, decision, or material I need to create:",
-                    f"What useful progress toward {outcome_focus} would look like:",
-                    "What I still need to test or verify:",
-                ],
+                f"Complete these prompts for your own {topic.lower()} work.",
+                items=worksheet_items[section_stage],
             ))
 
         elif kind == "reflection":
