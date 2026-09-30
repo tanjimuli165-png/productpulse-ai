@@ -42,14 +42,69 @@ def _set_example(topic: str) -> None:
 
 
 def _restore_cookie_session(store: ReportStore, cookies: stx.CookieManager) -> None:
+    """Restore the server-side session after a browser refresh/reconnect."""
     if st.session_state.get("auth_user"):
         return
-    token = cookies.get(AUTH_COOKIE)
+    token = None
+    try:
+        token = st.context.cookies.get(AUTH_COOKIE)
+    except (AttributeError, RuntimeError):
+        pass
+    if not token:
+        try:
+            token = cookies.get(AUTH_COOKIE)
+        except Exception:
+            pass
     if token:
         user = store.authenticate_session(token)
         if user:
             st.session_state["auth_user"] = user
             st.session_state["session_token"] = token
+
+
+def _restore_builder_state_from_url() -> None:
+    """Rebuild the product page state after a full browser refresh."""
+    if st.session_state.get("product_builder_state"):
+        return
+    try:
+        params = st.query_params
+        report_id = params.get("product_report_id")
+        opportunity_index = params.get("product_opportunity_index")
+        product_id = params.get("product_id")
+        if report_id and product_id and opportunity_index is not None:
+            st.session_state["product_builder_state"] = {
+                "report_id": report_id,
+                "opportunity_index": int(opportunity_index),
+                "product_id": product_id,
+            }
+    except (AttributeError, ValueError, TypeError):
+        pass
+
+
+def _persist_builder_state(report_id: str, opportunity_index: int, product_id: str) -> None:
+    state = {
+        "report_id": report_id,
+        "opportunity_index": int(opportunity_index),
+        "product_id": product_id,
+    }
+    st.session_state["product_builder_state"] = state
+    try:
+        st.query_params.update(
+            product_report_id=report_id,
+            product_opportunity_index=str(opportunity_index),
+            product_id=product_id,
+        )
+    except Exception:
+        pass
+
+
+def _clear_builder_state() -> None:
+    st.session_state.pop("product_builder_state", None)
+    try:
+        for key in ("product_report_id", "product_opportunity_index", "product_id"):
+            st.query_params.pop(key, None)
+    except Exception:
+        pass
 
 
 def _render_auth(store: ReportStore, cookies: stx.CookieManager) -> str | None:
@@ -346,6 +401,7 @@ div[data-testid="stFileUploader"]{border-radius:12px}
     if not user_id:
         st.warning("Please log in to use the opportunity engine.")
         return
+    _restore_builder_state_from_url()
     _render_history(store, user_id)
     storage_label = "Supabase Postgres + private Storage" if load_storage_config().backend == "supabase" else "local SQLite + private files"
     st.sidebar.caption(f"Storage: {storage_label}")
@@ -354,7 +410,7 @@ div[data-testid="stFileUploader"]{border-radius:12px}
     builder_state = st.session_state.get("product_builder_state")
     if builder_state:
         if st.button("Return to Opportunity Engine", key="return_to_opportunity_engine"):
-            st.session_state.pop("product_builder_state", None)
+            _clear_builder_state()
             st.rerun()
         selected_report = store.get(builder_state.get("report_id", ""), user_id=user_id)
         if selected_report is None:
@@ -392,7 +448,7 @@ div[data-testid="stFileUploader"]{border-radius:12px}
             manual_report = _build_manual_topic_report(manual_topic, manual_description, manual_audience, manual_outcome, combined_materials, user_id)
             store.save(manual_report, user_id=user_id)
             st.session_state["report"] = manual_report
-            st.session_state["product_builder_state"] = {"report_id": manual_report.id, "opportunity_index": 0, "product_id": uuid.uuid4().hex}
+            _persist_builder_state(manual_report.id, 0, uuid.uuid4().hex)
             st.rerun()
 
     st.divider()
@@ -477,18 +533,10 @@ div[data-testid="stFileUploader"]{border-radius:12px}
                         f"Continue saved blueprint · {saved_product['status']} · {version}",
                         key=f"open_product_{saved_product['product_id']}",
                     ):
-                        st.session_state["product_builder_state"] = {
-                            "report_id": report.id,
-                            "opportunity_index": opportunity_index,
-                            "product_id": saved_product["product_id"],
-                        }
+                        _persist_builder_state(report.id, opportunity_index, saved_product["product_id"])
                         st.rerun()
                 if st.button("Generate Product", key=f"generate_product_{report.id}_{opportunity_index}", type="primary"):
-                    st.session_state["product_builder_state"] = {
-                        "report_id": report.id,
-                        "opportunity_index": opportunity_index,
-                        "product_id": uuid.uuid4().hex,
-                    }
+                    _persist_builder_state(report.id, opportunity_index, uuid.uuid4().hex)
                     st.rerun()
         st.subheader("Problem-language evidence")
         if report.problems:
