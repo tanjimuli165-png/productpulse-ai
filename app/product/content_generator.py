@@ -65,6 +65,190 @@ def _token_limit(model: str) -> dict[str, int]:
 
 
 
+def _meal_prep_local_section_content(
+    blueprint: ProductBlueprint,
+    section_index: int,
+) -> GeneratedSection:
+    """Topic-specific offline content for the meal-prep workbook path."""
+    section = blueprint.outline[section_index]
+    planned = [str(kind).strip().lower() for kind in section.components]
+    title = section.title
+
+    def block(kind: str, block_title: str, body: str = "", *, items=None, columns=None, rows=None):
+        return {
+            "kind": kind,
+            "title": block_title,
+            "body": body,
+            "items": items or [],
+            "columns": columns or [],
+            "rows": rows or [],
+            "evidence_ids": [],
+        }
+
+    blocks = []
+    section_key = title.lower()
+    if section_key == "baseline":
+        if "paragraph" in planned:
+            blocks.append(block(
+                "paragraph",
+                "Map your current meal-prep friction",
+                "Look at one normal week of meals. Notice where time goes: choosing recipes, deciding what to buy, preparing ingredients, cooking in batches, storing portions, or ending up with food you do not want to eat later.",
+            ))
+        if "worksheet" in planned:
+            blocks.append(block(
+                "worksheet",
+                "Weekly meal-prep baseline",
+                "Fill this in before changing your routine.",
+                items=[
+                    "Meals I actually need to plan for this week:",
+                    "Recipes or meals I already know I will eat:",
+                    "Groceries I usually forget or overbuy:",
+                    "Prep or cooking time I can realistically use:",
+                    "Food I often end up wasting or not enjoying:",
+                ],
+            ))
+    elif section_key == "guided lessons":
+        if "paragraph" in planned:
+            blocks.append(block(
+                "paragraph",
+                "Build a smaller, repeatable meal plan",
+                "The goal is not to find the perfect recipe collection. Build a weekly menu that matches your schedule, grocery needs, cooking capacity, and food preferences.",
+            ))
+        if "steps" in planned:
+            blocks.append(block(
+                "steps",
+                "A simple weekly meal-prep workflow",
+                "Use the same sequence each week, then adjust it when your schedule or preferences change.",
+                items=[
+                    "Choose a small set of meals you are realistically willing to eat this week.",
+                    "Combine ingredients into one grocery list and remove items you already have.",
+                    "Pick one or two prep tasks that save effort later, such as washing produce or cooking a base ingredient.",
+                    "Portion and store food in a way that makes the next meal easy to choose.",
+                    "Review what was actually eaten before planning the next week.",
+                ],
+            ))
+        if "example" in planned:
+            blocks.append(block(
+                "example",
+                "Illustrative example: a lower-friction week",
+                "Hypothetical example: instead of planning seven different recipes, a reader chooses three repeatable meals, creates one grocery list, prepares a shared ingredient once, and leaves room for one flexible meal. The point is to reduce decisions, not to follow a perfect menu.",
+            ))
+    elif section_key == "exercises":
+        if "exercise" in planned:
+            blocks.append(block(
+                "exercise",
+                "Plan one realistic week",
+                "Create a meal-prep plan you could actually follow next week.",
+                items=[
+                    "Choose three to five meals that fit your schedule and food preferences.",
+                    "Write the ingredients you need and remove duplicates from the list.",
+                    "Choose one prep block and define exactly what you will prepare.",
+                    "Decide how the prepared food will be stored and when you expect to eat it.",
+                    "After the week, note what was eaten, skipped, or disliked.",
+                ],
+            ))
+        if "worksheet" in planned:
+            blocks.append(block(
+                "worksheet",
+                "Meal-prep experiment notes",
+                "Use this page while testing the plan.",
+                items=[
+                    "Meals I chose:",
+                    "Grocery decisions I simplified:",
+                    "Prep task I completed:",
+                    "What made the routine easier or harder:",
+                    "What I will change next week:",
+                ],
+            ))
+    elif section_key == "worksheets":
+        if "worksheet" in planned:
+            blocks.append(block(
+                "worksheet",
+                "Meal and grocery planning page",
+                "Fill in only the meals and ingredients that fit your actual week.",
+                items=[
+                    "Meal or recipe I want:",
+                    "Key ingredients:",
+                    "What I already have:",
+                    "What needs to go on the grocery list:",
+                    "Prep task and planned day:",
+                ],
+            ))
+        if "table" in planned:
+            blocks.append(block(
+                "table",
+                "Weekly meal-prep planner",
+                "Use the table to connect each meal with its ingredients and prep task.",
+                columns=["Meal / recipe", "Key ingredients", "Prep task", "Planned day"],
+                rows=[
+                    ["Meal 1", "List the main ingredients", "What will I prep?", "Day / meal"],
+                    ["Meal 2", "List the main ingredients", "What will I prep?", "Day / meal"],
+                    ["Meal 3", "List the main ingredients", "What will I prep?", "Day / meal"],
+                    ["Flexible meal", "What can use what is left?", "Minimal prep", "Day / meal"],
+                ],
+            ))
+    elif section_key == "review":
+        if "reflection" in planned:
+            blocks.append(block(
+                "reflection",
+                "Review the week honestly",
+                "Use what actually happened to improve the next plan. A missed meal or unused ingredient is information about the routine, not a reason to force the same plan again.",
+                items=[
+                    "Which meals were easiest to choose and prepare?",
+                    "Where did grocery decisions or recipe searching still take too much time?",
+                    "What food was left unused or not enjoyable?",
+                    "Which prep task was worth repeating?",
+                ],
+            ))
+        if "action_steps" in planned:
+            blocks.append(block(
+                "action_steps",
+                "Adjust next week's routine",
+                "Make a small change based on what you observed.",
+                items=[
+                    "Keep one meal or prep task that clearly fit the week.",
+                    "Remove one choice, recipe, or grocery step that created unnecessary friction.",
+                    "Choose one concrete change to test in the next weekly plan.",
+                ],
+            ))
+
+    # If the user changes section names in the approved blueprint, preserve the
+    # component contract but still use meal-prep language instead of the old
+    # generic fallback recipe.
+    if not blocks:
+        for kind in planned:
+            if kind == "paragraph":
+                blocks.append(block("paragraph", f"{title}: meal-prep focus", "Apply this section to your weekly meals, grocery choices, recipe decisions, and realistic prep routine."))
+            elif kind in {"steps", "action_steps"}:
+                blocks.append(block(kind, f"{title}: meal-prep actions", "Work through these actions with one real week.", items=[
+                    "Choose the meals you realistically want this week.",
+                    "Simplify the grocery list and prep tasks.",
+                    "Review what worked and adjust the next week.",
+                ]))
+            elif kind == "checklist":
+                blocks.append(block("checklist", f"{title}: meal-prep checklist", "Check each item when completed.", items=[
+                    "Meals chosen", "Grocery list simplified", "Prep task completed", "Next change recorded",
+                ]))
+            elif kind in {"exercise", "worksheet", "reflection"}:
+                blocks.append(block(kind, f"{title}: meal-prep working page", "Use this page with your own meals, groceries, prep tasks, and review notes.", items=[
+                    "What I am planning:", "What I need:", "What I will test next:",
+                ]))
+            elif kind == "example":
+                blocks.append(block("example", f"{title}: meal-prep example", "Illustrative example: simplify one week's meals, grocery list, and prep tasks, then review what was actually useful."))
+            elif kind == "table":
+                blocks.append(block("table", f"{title}: meal-prep table", "Track the details for your own week.", columns=["Meal", "Ingredients", "Prep", "Review"], rows=[
+                    ["Meal 1", "Ingredients", "Prep task", "What changed?"],
+                    ["Meal 2", "Ingredients", "Prep task", "What changed?"],
+                ]))
+
+    return GeneratedSection(
+        section_index=section_index,
+        title=section.title,
+        purpose=section.purpose,
+        blocks=blocks,
+    )
+
+
 def _local_section_content(
     blueprint: ProductBlueprint,
     section_index: int,
@@ -319,6 +503,16 @@ def generate_section_content(
         raise ValueError("Choose a section that exists in the approved blueprint.")
     section: BlueprintSection = blueprint.outline[section_index]
     references = evidence or []
+    topic_text = " ".join(
+        [
+            blueprint.title,
+            blueprint.core_problem,
+            blueprint.desired_outcome,
+            blueprint.target_audience,
+        ]
+    ).lower()
+    if "meal prep" in topic_text or "meal-prep" in topic_text or "grocery" in topic_text or "batch cooking" in topic_text:
+        return _meal_prep_local_section_content(blueprint, section_index)
     allowed_ids = {reference.evidence_id for reference in references}
     model = model or os.getenv("PRODUCT_BUILDER_MODEL", "gpt-5-mini")
     try:
