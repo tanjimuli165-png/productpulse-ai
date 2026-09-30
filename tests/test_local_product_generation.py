@@ -69,6 +69,35 @@ def test_local_generation_is_topic_and_section_aware_across_multiple_products():
     assert topic_texts[cases[1]["title"]] != topic_texts[cases[2]["title"]]
 
 
+def test_local_generation_supports_all_built_in_product_formats():
+    from app.product.product_schema import PRODUCT_TYPES
+
+    inputs = ProductInputs(
+        product_title="Weekly Project Organizer",
+        audience="Freelance professionals managing recurring project work",
+        problem="Tasks, deadlines, notes, and follow-up decisions get scattered across tools.",
+        promise="Create a repeatable planning and review routine with clear next actions.",
+        format_hints=["guide", "planner", "workbook"],
+    )
+
+    for product_type in PRODUCT_TYPES:
+        blueprint = _local_blueprint(inputs, product_type)
+        sections = [
+            generate_section_content(blueprint, index)
+            for index in range(len(blueprint.outline))
+        ]
+
+        assert len(sections) == len(blueprint.outline)
+        for index, section in enumerate(sections):
+            planned = {kind.lower() for kind in blueprint.outline[index].components}
+            actual = {block.kind for block in section.blocks}
+            assert actual == planned
+            assert all(
+                (block.body.strip() or block.items or block.rows)
+                for block in section.blocks
+            )
+
+
 def test_generic_local_fallback_avoids_near_duplicate_blocks():
     inputs = ProductInputs(
         product_title="Weekly Project Planner",
