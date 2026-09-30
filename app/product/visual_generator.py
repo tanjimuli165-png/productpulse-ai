@@ -123,6 +123,74 @@ def _diagram_svg(title: str, steps: list[str], accent: str) -> bytes:
     return _svg_document(heading + "".join(boxes), width=width, height=height, title=title)
 
 
+def suggest_visual_ideas(product_type: str, topic: str, sections: list[dict] | None = None) -> list[dict[str, str]]:
+    """Suggest restrained, format-aware visuals without generating or inventing imagery."""
+    normalized = str(product_type or "").strip().lower()
+    topic = " ".join(str(topic or "").split()) or "this product"
+    profiles = {
+        "planner": [
+            ("Planning overview", "Planning Pages", "A simple weekly/monthly planning diagram can make the planning flow easier to scan."),
+            ("Priority map", "Priority Tracker", "A small priority visual can clarify how tasks move from importance to next action."),
+        ],
+        "journal": [
+            ("Reflection divider", "Reflection Pages", "A calm, minimal divider can separate reflection prompts without adding unnecessary content."),
+            ("Reflection flow", "Progress Review", "A simple reflection-to-next-step diagram can visually connect entries and review."),
+        ],
+        "workbook": [
+            ("Concept map", "Guided Lessons", "A compact concept diagram can make a key lesson easier to understand before the exercise."),
+            ("Practice flow", "Exercises", "A process visual can show how to move from prompt to practice to review."),
+        ],
+        "checklist": [
+            ("Completion marker", "Main Checklist", "A simple checkmark or progress marker reinforces completion without competing with the checklist."),
+        ],
+        "guide": [
+            ("Process overview", "Step-by-Step Guide", "A short process diagram can give the reader a visual map before detailed steps."),
+            ("Troubleshooting map", "Troubleshooting", "A compact decision or flow visual can help readers scan possible next actions."),
+        ],
+        "tracker": [
+            ("Tracking grid", "Tracking Pages", "A clean visual grid can explain what to record and when to review it."),
+            ("Progress snapshot", "Progress Summary", "A simple progress visual can make review easier without inventing numerical results."),
+        ],
+        "action plan": [
+            ("Action roadmap", "Milestones", "A milestone roadmap can show sequence without adding unsupported claims."),
+            ("Review loop", "Review", "A small action-review-adjust loop can reinforce the iterative workflow."),
+        ],
+        "challenge": [
+            ("Challenge roadmap", "Day/Week Plan", "A visual sequence can make the challenge cadence easy to scan."),
+            ("Progress loop", "Progress Checks", "A simple check-and-reflect loop can connect participation with review."),
+        ],
+        "template": [
+            ("Template anatomy", "Template", "A labeled mock layout can show how the reusable template is meant to be filled in."),
+            ("Customization guide", "Customization", "A compact visual can show which areas are fixed versus customizable."),
+        ],
+        "worksheet": [
+            ("Worksheet flow", "Working Area", "A simple prompt-to-response flow can make the worksheet easier to use."),
+        ],
+        "playbook": [
+            ("Strategy map", "Core Strategies", "A compact strategy map can summarize how the main playbook pieces connect."),
+            ("Execution flow", "Execution Plan", "A process visual can help readers move from strategy into execution."),
+        ],
+        "ebook": [
+            ("Concept illustration", "Core Concepts", "A restrained concept diagram can break up dense explanatory pages."),
+            ("Key takeaway visual", "Key Takeaways", "A simple summary visual can reinforce the main ideas without repeating the prose."),
+        ],
+    }
+    ideas = profiles.get(normalized, [
+        ("Section concept visual", "Relevant section", "Use a small diagram or icon only where it improves comprehension."),
+    ])
+    section_names = {str(item.get("title", "")).strip().lower(): str(item.get("title", "")).strip() for item in (sections or []) if isinstance(item, dict)}
+    result = []
+    for name, placement, why in ideas:
+        actual = section_names.get(placement.lower(), placement)
+        result.append({
+            "title": name,
+            "placement": actual,
+            "reason": why,
+            "brief": f"Create a restrained visual for {topic}; do not invent facts, metrics, or unsupported claims.",
+        })
+    return result
+
+
 def create_visual_asset(
     asset_type: str,
     title: str,
