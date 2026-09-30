@@ -631,12 +631,23 @@ def generate_section_content(
     model = model or os.getenv("PRODUCT_BUILDER_MODEL", "gpt-5-mini")
     try:
         if client is None and not (os.getenv("PRODUCT_BUILDER_API_KEY") or os.getenv("OPENAI_API_KEY")):
-            return _local_section_content(
+            generated = _local_section_content(
                 blueprint,
                 section_index,
                 references,
                 reference_material=reference_material,
             )
+            try:
+                _validate_component_contract(section, generated)
+                _validate_content_grounding(
+                    blueprint, section, generated, product_inputs, section_index=section_index
+                )
+            except ValueError as exc:
+                raise ContentGenerationError(
+                    "Offline section generation did not produce enough product-specific detail. "
+                    "Regenerate after refining the approved blueprint or enable the configured AI provider."
+                ) from exc
+            return generated
         if client is None:
             client = _provider_client()
     except BlueprintGenerationError as exc:
