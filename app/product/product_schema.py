@@ -181,8 +181,6 @@ class ContentBlock(BaseModel):
                 raise ValueError("Every table row must match the number of column headings.")
         elif self.columns or self.rows:
             raise ValueError("Table columns and rows are only valid for table blocks.")
-        if self.kind == "reference" and not self.evidence_ids:
-            raise ValueError("A reference block must cite at least one supplied evidence ID.")
         if self.kind != "reference" and self.evidence_ids:
             raise ValueError("Evidence IDs may only be attached to reference blocks.")
         return self
