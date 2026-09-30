@@ -547,9 +547,10 @@ def _validate_content_grounding(
     )
     section_focus_matches = _matched_grounding_terms(section_focus_terms, focus_body_text)
     # Creator material is optional and may be relevant only to selected sections.
-    # Require one distinctive supplied-material term in the first section so the
-    # provider cannot silently ignore a creator's custom brief from the start.
-    reference_matches = _matched_grounding_terms(reference_terms, generated_text) if section_index == 0 else set()
+    # In the first section, require a supplied-material term in substantive blocks;
+    # a provider cannot satisfy the check by merely copying the source into a
+    # reference/provenance block.
+    reference_matches = _matched_grounding_terms(reference_terms, focus_body_text) if section_index == 0 else set()
 
     missing: list[str] = []
     if product_terms and not product_matches:
