@@ -214,7 +214,7 @@ class ProductFactoryTests(unittest.TestCase):
                 {
                     "kind": "steps",
                     "title": "Plan meal decisions",
-                    "body": "Use a repeatable weekly meal plan to reduce decision load and keep grocery choices visible.",
+                    "body": "Use a repeatable weekly meal plan because weekly meal planning takes too much time; this routine helps create a repeatable weekly meal-prep routine and keeps grocery choices visible.",
                     "items": ["Choose the meals for the week", "List the grocery items", "Record the next cooking action"],
                     "columns": [],
                     "rows": [],
