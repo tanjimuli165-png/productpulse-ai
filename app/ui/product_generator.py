@@ -70,6 +70,8 @@ def build_product_inputs(report: Report, opportunity: Opportunity) -> ProductInp
         differentiation=opportunity.differentiation,
         evidence=evidence_refs,
         validation_steps=opportunity.next_steps,
+        research_backed=report.scoring_version != "manual_topic_v1",
+        market_context=list(getattr(opportunity, "market_context", []))[:12],
     )
 
 
@@ -193,6 +195,8 @@ def _edit_inputs(inputs: ProductInputs, prefix: str) -> ProductInputs:
                     evidence=values["evidence"],
                     validation_steps=_line_items(validation),
                     reference_material=reference_material,
+                    research_backed=bool(values.get("research_backed", False)),
+                    market_context=list(values.get("market_context", [])),
                 )
                 st.session_state[f"{prefix}_current_inputs"] = updated.model_dump(mode="json")
                 st.session_state[f"{prefix}_inputs_applied"] = True
@@ -720,7 +724,7 @@ def _render_quality_assurance(
 
     for check in latest_result.get("checks", []):
         label = f"{check.get('status', 'NOT RUN')} · {check.get('category', 'QA')} · {check.get('name', 'Check')}"
-        with st.expander(label, expanded=check.get("status") == "FLAG" or check.get("status") == "NOT RUN"):
+        with st.expander(label, expanded=check.get("status") in {"FLAG", "NOT RUN", "REVIEW"}):
             st.write(check.get("message", "No check details."))
             if check.get("issues"):
                 st.markdown("**Actionable findings**")
@@ -1097,6 +1101,14 @@ def render_product_generator(
             st.markdown(f"- [{label}]({reference.url})" if reference.url else f"- {label}")
     elif not is_manual_topic:
         st.warning("No source record could be directly linked to this problem signal. The blueprint will retain the research hypothesis and should be treated as needing validation.")
+
+    if inputs.research_backed:
+        with st.expander("Research + market context carried into this product", expanded=False):
+            st.caption("These records are context for product decisions, not proof of demand. Compare the original listings before making pricing, differentiation, or positioning claims.")
+            for finding in getattr(opportunity, "validation_findings", []):
+                st.write(f"• {finding}")
+            for record in inputs.market_context:
+                st.write(f"• {record}")
 
     inputs = clean_product_inputs(_edit_inputs(inputs, prefix))
     st.session_state[f"{prefix}_current_inputs"] = inputs.model_dump(mode="json")
