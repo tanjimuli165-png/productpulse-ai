@@ -148,7 +148,10 @@ def _render_auth(store: ReportStore, cookies: stx.CookieManager) -> str | None:
                 cookies.set(AUTH_COOKIE, token, key="set_auth_cookie", expires_at=datetime.now(timezone.utc) + timedelta(days=30), max_age=30 * 24 * 60 * 60, path="/", secure=True, same_site="lax")
                 st.session_state["auth_user"] = user
                 st.session_state["session_token"] = token
-                st.rerun()
+                # Do not immediately rerun here. CookieManager writes through an
+                # async browser component; continuing this run lets the browser
+                # receive the persistent cookie before any refresh can occur.
+                return user["user_id"]
             st.error("Invalid username or password.")
     with register_tab:
         with st.form("main_register_form"):
