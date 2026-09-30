@@ -647,6 +647,7 @@ div[data-testid="stFileUploader"]{border-radius:12px}
         if report.research_audit:
             st.subheader("Research readiness audit")
             st.caption("This audit shows what the scan actually established and what still requires verification. It does not produce a demand score.")
+            st.info(report.research_audit.get("research_status", "Research status not available."))
             for check in report.research_audit.get("checks", []):
                 status = check.get("status", "REVIEW")
                 with st.expander(f"{status} · {check.get('name', 'Research check')}"):
