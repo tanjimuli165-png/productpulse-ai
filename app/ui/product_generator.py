@@ -18,7 +18,7 @@ from app.product.pdf_builder import ProductPdfExportError, export_saved_product_
 from app.product.product_schema import DESIGN_TEMPLATE_IDS, PAGE_SIZE_OPTIONS, PRODUCT_TYPES, EvidenceReference, ProductBlueprint, ProductContent, ProductDesign, ProductInputs
 from app.product.qa import final_verification, qa_snapshot_fingerprint, run_product_qa
 from app.product.storage import ProductStore
-from app.product.strategy import BlueprintGenerationError, generate_blueprint, recommend_product_types
+from app.product.strategy import BlueprintGenerationError, clean_product_inputs, generate_blueprint, recommend_product_types
 from app.product.template_engine import PAGE_SIZES, design_details, get_template, render_product_html, template_recommendation
 logger = logging.getLogger(__name__)
 
@@ -1098,7 +1098,8 @@ def render_product_generator(
     elif not is_manual_topic:
         st.warning("No source record could be directly linked to this problem signal. The blueprint will retain the research hypothesis and should be treated as needing validation.")
 
-    inputs = _edit_inputs(inputs, prefix)
+    inputs = clean_product_inputs(_edit_inputs(inputs, prefix))
+    st.session_state[f"{prefix}_current_inputs"] = inputs.model_dump(mode="json")
     suggested_types, suggestion_reason = recommend_product_types(inputs)
     st.markdown("**Initial format-based recommendation**")
     st.write(", ".join(suggested_types))
