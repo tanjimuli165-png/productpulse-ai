@@ -513,11 +513,6 @@ def generate_section_content(
             "planned_components": section.components,
         },
         "available_research_references": [item.model_dump(mode="json") for item in references],
-        "research_product_context": {
-            "research_backed": bool(getattr(blueprint, "research_backed", False)),
-            "differentiation": [],
-            "market_context": [],
-        },
         "creator_reference_material": reference_material,
     }
     try:
