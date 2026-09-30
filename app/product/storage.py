@@ -230,9 +230,16 @@ class ProductStore:
                 raise PermissionError("This product blueprint belongs to another account.")
             if existing:
                 blueprint_changed = blueprint_json != existing[1]
+                inputs_changed = inputs_json != (
+                    conn.execute(
+                        "SELECT inputs_payload FROM products WHERE product_id=?",
+                        (product_id,),
+                    ).fetchone()[0] or "{}"
+                )
+                invalidate_content = bool(existing[2]) and (blueprint_changed or inputs_changed)
                 conn.execute(
                     "UPDATE products SET source_report_id=?,opportunity_index=?,opportunity_name=?,source_payload=?,inputs_payload=?,blueprint_payload=?,status=?,updated_at=?,content_payload=CASE WHEN ?=1 THEN NULL ELSE content_payload END WHERE product_id=? AND user_id=?",
-                    (source_report_id, opportunity_index, opportunity_name, source_json, inputs_json, blueprint_json, status, now, int(blueprint_changed and bool(existing[2])), product_id, user_id),
+                    (source_report_id, opportunity_index, opportunity_name, source_json, inputs_json, blueprint_json, status, now, int(invalidate_content), product_id, user_id),
                 )
             else:
                 conn.execute(
