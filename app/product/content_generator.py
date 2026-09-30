@@ -54,7 +54,7 @@ SECTION_CONTENT_JSON_SCHEMA: dict[str, Any] = {
 
 CONTENT_SYSTEM_PROMPT = """You are a careful digital-product content writer. Write complete, useful content for exactly the one requested section of an already-approved product blueprint. Follow its purpose and planned components; choose a suitable mix of concise explanations, actionable steps, clearly labeled illustrative examples, exercises, checklists, worksheets, tables, reflection prompts, and next actions as appropriate. Return structured content blocks, not markdown or a whole-book draft.
 
-Treat the research opportunity as an evidence-supported hypothesis that still needs validation. Never promise sales, results, guaranteed demand, or outcomes. Do not invent statistics, research findings, testimonials, customer quotes, named sources, or validation results. Any example scenario must be explicitly described as hypothetical or illustrative. You may cite only the exact evidence IDs in the supplied source list; include their IDs in a reference block only when relevant. If there are no suitable sources, do not create citations. Avoid unsupported factual claims, filler, and repetition. Be practical, plain-language, inclusive, and specific enough that the reader can act."""
+Treat the research opportunity as an evidence-supported hypothesis that still needs validation. Never promise sales, results, guaranteed demand, or outcomes. Do not invent statistics, research findings, testimonials, customer quotes, named sources, or validation results. Any example scenario must be explicitly described as hypothetical or illustrative. Use supplied source excerpts as grounding context and cite only the exact evidence IDs present in the source list; never invent IDs. If there are no suitable sources, do not create citations. Avoid unsupported factual claims, filler, and repetition. Be practical, plain-language, inclusive, and specific enough that the reader can act."""
 
 
 def _token_limit(model: str) -> dict[str, int]:
@@ -302,6 +302,7 @@ def _local_section_content(
                     "reference",
                     "Linked research references",
                     "These source records are attached to the product hypothesis. Open the original sources before relying on a claim.",
+                    items=[compact(item.source_excerpt or item.customer_language, 260) for item in evidence[:2] if (item.source_excerpt or item.customer_language)],
                     evidence_ids=[item.evidence_id for item in evidence[:5]],
                 ))
             else:
