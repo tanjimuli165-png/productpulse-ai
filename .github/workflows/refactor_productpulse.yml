@@ -1,0 +1,1118 @@
+name: Refactor ProductPulse AI product validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/refactor_productpulse.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply generic product intelligence refactor
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count} for marker")
+              p.write_text(text.replace(old, new), encoding="utf-8")
+
+          def replace_between(path, start_marker, end_marker, replacement):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              start = text.find(start_marker)
+              end = text.find(end_marker, start + len(start_marker))
+              if start < 0 or end < 0:
+                  raise SystemExit(f"{path}: replacement markers not found")
+              p.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
+
+          # 1) Schema: persist research provenance + market context without
+          # breaking existing saved products (all new fields have defaults).
+          replace_once(
+              "app/product/product_schema.py",
+              '''    validation_steps: List[str] = Field(default_factory=list, max_length=12)
+    reference_material: str = Field(default="", max_length=50000)
+
+    @field_validator("format_hints", "differentiation", "validation_steps")
+''',
+              '''    validation_steps: List[str] = Field(default_factory=list, max_length=12)
+    reference_material: str = Field(default="", max_length=50000)
+    research_backed: bool = False
+    market_context: List[str] = Field(default_factory=list, max_length=12)
+
+    @field_validator("format_hints", "differentiation", "validation_steps", "market_context")
+'''
+          )
+          replace_once(
+              "app/product/product_schema.py",
+              '''    next_steps: List[str]
+''',
+              '''    next_steps: List[str]
+    validation_findings: List[str] = Field(default_factory=list)
+    market_context: List[str] = Field(default_factory=list)
+'''
+          )
+          replace_once(
+              "app/product/product_schema.py",
+              '''    def trim_blueprint_lists(cls, values: List[str]) -> List[str]:
+        return [str(value).strip() for value in values if str(value).strip()]
+
+
+ContentBlockKind = Literal[
+''',
+              '''    def trim_blueprint_lists(cls, values: List[str]) -> List[str]:
+        return [str(value).strip() for value in values if str(value).strip()]
+
+
+ContentBlockKind = Literal[
+'''
+          )
+          # Validate blueprint component vocabulary so provider output cannot
+          # invent renderer-incompatible block kinds.
+          replace_once(
+              "app/product/product_schema.py",
+              '''    @field_validator("title")
+''',
+              '''    @field_validator("components")
+    @classmethod
+    def valid_components(cls, values: List[str]) -> List[str]:
+        allowed = {
+            "paragraph", "steps", "example", "exercise", "checklist",
+            "worksheet", "table", "reflection", "action_steps", "reference",
+        }
+        cleaned = [str(value).strip().lower() for value in values if str(value).strip()]
+        invalid = [value for value in cleaned if value not in allowed]
+        if invalid:
+            raise ValueError(f"Unsupported content component(s): {', '.join(sorted(set(invalid)))}")
+        return list(dict.fromkeys(cleaned))
+
+    @field_validator("title")
+'''
+          )
+
+          # 2) Strategy: strict component schema + cleaner + market-aware prompt.
+          replace_once(
+              "app/product/strategy.py",
+              '''                    "components": {"type": "array", "items": {"type": "string"}, "maxItems": 12},
+''',
+              '''                    "components": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "paragraph", "steps", "example", "exercise", "checklist",
+                                "worksheet", "table", "reflection", "action_steps", "reference",
+                            ],
+                        },
+                        "maxItems": 12,
+                    },
+'''
+          )
+          replace_once(
+              "app/product/strategy.py",
+              '''Use only the provided audience, problem, promise, format, differentiation, validation steps, source records, and creator-supplied reference material.
+''',
+              '''Use only the provided audience, problem, promise, format, differentiation, validation steps, source records, marketplace/competitor context, and creator-supplied reference material.
+'''
+          )
+          replace_once(
+              "app/product/strategy.py",
+              '''    payload["validation_steps"] = [clean_research_text(item, 300) for item in payload["validation_steps"]]
+    return ProductInputs.model_validate(payload)
+''',
+              '''    payload["validation_steps"] = list(dict.fromkeys(
+        clean_research_text(item, 300) for item in payload["validation_steps"]
+    ))
+    payload["market_context"] = list(dict.fromkeys(
+        clean_research_text(item, 900) for item in payload.get("market_context", [])
+    ))
+    payload["reference_material"] = clean_research_text(payload.get("reference_material", ""), 50000)
+    return ProductInputs.model_validate(payload)
+'''
+          )
+          # Add one source/grounding block to every deterministic profile's first section.
+          replace_once(
+              "app/product/strategy.py",
+              '''def product_type_profile(product_type: str) -> dict[str, object]:
+''',
+              '''# A single evidence/reference component gives deterministic products a
+# dedicated provenance slot without repeating source text in every section.
+for _profile in PRODUCT_TYPE_PROFILES.values():
+    _sections = _profile["sections"]
+    if _sections and "reference" not in _sections[0]["blocks"]:
+        _sections[0]["blocks"] = [*_sections[0]["blocks"], "reference"]
+
+
+def product_type_profile(product_type: str) -> dict[str, object]:
+'''
+          )
+
+          # 3) Generic deterministic content engine: no meal-prep-specific branch.
+          generic_content = r'''def _local_section_content(
+    blueprint: ProductBlueprint,
+    section_index: int,
+    evidence: list[EvidenceReference],
+    reference_material: str = "",
+) -> GeneratedSection:
+    """Generate useful offline content from the actual topic/problem/outcome contract."""
+    section = blueprint.outline[section_index]
+    topic = blueprint.title.strip()
+    problem = " ".join(blueprint.core_problem.split()).strip()
+    outcome = " ".join(blueprint.desired_outcome.split()).strip()
+    audience = " ".join(blueprint.target_audience.split()).strip()
+    purpose = " ".join(section.purpose.split()).strip()
+    title_lower = section.title.lower()
+    planned = [str(kind).strip().lower() for kind in section.components if str(kind).strip()]
+
+    def compact(value: str, limit: int = 220) -> str:
+        value = " ".join((value or "").split()).strip()
+        if len(value) <= limit:
+            return value
+        clipped = value[:limit].rsplit(" ", 1)[0].rstrip(" ,;:-")
+        return (clipped or value[:limit]).rstrip() + "…"
+
+    def terms(value: str, limit: int = 8) -> list[str]:
+        stop = {
+            "about", "after", "again", "also", "because", "before", "being", "between",
+            "could", "does", "each", "from", "have", "into", "more", "most", "other",
+            "should", "some", "such", "than", "that", "their", "there", "these", "they",
+            "this", "through", "under", "what", "when", "where", "which", "with", "your",
+        }
+        result = []
+        for word in re.findall(r"[a-z0-9]+", (value or "").lower()):
+            if len(word) < 4 or word in stop or word in result:
+                continue
+            result.append(word)
+            if len(result) >= limit:
+                break
+        return result
+
+    def reference_snippets() -> list[str]:
+        raw = " ".join((reference_material or "").split())
+        if not raw:
+            return []
+        sentences = [part.strip() for part in re.split(r"(?<=[.!?])s+", raw) if part.strip()]
+        focus = set(terms(f"{problem} {outcome} {section.title}", 10))
+        scored = []
+        for index, sentence in enumerate(sentences):
+            score = len(focus & set(terms(sentence, 12)))
+            scored.append((score, -index, compact(sentence, 220)))
+        scored.sort(reverse=True)
+        picked = []
+        for _, _, sentence in scored:
+            if sentence not in picked:
+                picked.append(sentence)
+            if len(picked) >= 2:
+                break
+        return picked
+
+    creator_snippets = reference_snippets()
+    problem_terms = terms(problem, 6)
+    outcome_terms = terms(outcome, 6)
+    focus_phrase = ", ".join(problem_terms[:4]) or compact(problem, 90)
+    outcome_phrase = ", ".join(outcome_terms[:4]) or compact(outcome, 90)
+
+    def stage() -> str:
+        if any(key in title_lower for key in ("start", "intro", "baseline", "setup", "how to use", "before you start")):
+            return "setup"
+        if any(key in title_lower for key in ("review", "progress", "next", "result", "completion", "retrospective")):
+            return "review"
+        if any(key in title_lower for key in ("lesson", "concept", "workflow", "core", "guide", "main")):
+            return "practice"
+        return "apply"
+
+    section_stage = stage()
+
+    def block(kind: str, block_title: str, body: str = "", *, items=None, columns=None, rows=None, evidence_ids=None):
+        return {
+            "kind": kind,
+            "title": block_title,
+            "body": body,
+            "items": items or [],
+            "columns": columns or [],
+            "rows": rows or [],
+            "evidence_ids": evidence_ids or [],
+        }
+
+    blocks: list[dict[str, Any]] = []
+    for kind in planned:
+        if kind == "paragraph":
+            body = (
+                f"This section focuses on {section.title.lower()} for {audience}. "
+                f"The problem to keep in view is {problem.lower()}. "
+                f"Use the section purpose—{compact(purpose, 240)}—to make a concrete move toward {outcome.lower()}."
+            )
+            blocks.append(block("paragraph", f"{section.title}: working context", body))
+
+        elif kind in {"steps", "action_steps"}:
+            if section_stage == "setup":
+                items = [
+                    f"Describe one real situation where {focus_phrase} shows up.",
+                    f"Define what useful progress would look like for {outcome_phrase}.",
+                    f"Choose the smallest practical starting point for the {section.title.lower()} task.",
+                    "Record any constraint that could change the plan before moving on.",
+                ]
+            elif section_stage == "practice":
+                items = [
+                    f"Break the {section.title.lower()} task into one clear decision or action.",
+                    f"Apply that action to a real example connected to {focus_phrase}.",
+                    "Compare what happened with the intended outcome and note any friction.",
+                    "Adjust the approach before repeating it in another example.",
+                ]
+            elif section_stage == "review":
+                items = [
+                    f"Review what happened while working on {section.title.lower()}.",
+                    f"Identify which part of the process moved you closer to {outcome_phrase}.",
+                    "Separate a useful result from an assumption that still needs testing.",
+                    "Choose one concrete change for the next attempt or planning period.",
+                ]
+            else:
+                items = [
+                    f"Choose one real example related to {focus_phrase}.",
+                    f"Complete the {section.title.lower()} task using the supplied product purpose as the guide.",
+                    f"Record the decision, action, or result that supports {outcome_phrase}.",
+                    "Write one adjustment to test before using the same approach again.",
+                ]
+            blocks.append(block(
+                kind,
+                f"{section.title}: practical workflow",
+                f"Work with one real example rather than trying to complete the whole product at once.",
+                items=items,
+            ))
+
+        elif kind == "checklist":
+            blocks.append(block(
+                "checklist",
+                f"{section.title}: quality check",
+                "Mark an item only when the work is actually complete.",
+                items=[
+                    f"I completed the {section.title.lower()} task with a real example.",
+                    f"I addressed at least one aspect of {focus_phrase}.",
+                    f"I recorded a concrete action or decision related to {outcome_phrase}.",
+                    "I noted anything that remains uncertain instead of presenting it as settled fact.",
+                ],
+            ))
+
+        elif kind == "example":
+            blocks.append(block(
+                "example",
+                f"{section.title}: illustrative example",
+                f"Hypothetical example: a {audience.lower()} reader notices that {problem.lower()}. "
+                f"They use the {section.title.lower()} method, record what changed, and decide what to test next. "
+                "This example is illustrative only and does not claim a real-world outcome.",
+            ))
+
+        elif kind == "exercise":
+            blocks.append(block(
+                "exercise",
+                f"{section.title}: practice task",
+                f"Use one real situation connected to {focus_phrase} and complete this task before moving on.",
+                items=[
+                    "Write the starting situation in one or two specific sentences.",
+                    f"Apply the section approach to move toward {outcome_phrase}.",
+                    "Capture the result, friction, or unanswered question.",
+                    "Write one change you would make on a second attempt.",
+                ],
+            ))
+
+        elif kind == "worksheet":
+            prompts = [
+                f"My situation related to {section.title.lower()}:",
+                f"The part of the problem I am addressing ({focus_phrase}):",
+                f"The action, decision, or material I need to create:",
+                f"What would count as useful progress toward {outcome_phrase}:",
+                "What I still need to test or verify:",
+            ]
+            blocks.append(block(
+                "worksheet",
+                f"{section.title}: working page",
+                f"Complete these prompts using your own {topic.lower()} context.",
+                items=prompts,
+            ))
+
+        elif kind == "reflection":
+            prompts = [
+                f"What became clearer about {focus_phrase} after completing this section?",
+                f"What helped or hindered progress toward {outcome_phrase}?",
+                f"What assumption still needs evidence or another test?",
+                f"What will I keep, change, or try next?",
+            ]
+            blocks.append(block(
+                "reflection",
+                f"{section.title}: reflection",
+                "Use the prompts to learn from what actually happened instead of repeating the section summary.",
+                items=prompts,
+            ))
+
+        elif kind == "table":
+            if section_stage == "setup":
+                columns = ["Current situation", "Need / constraint", "First action", "Review note"]
+                rows = [
+                    [compact(topic, 60), compact(problem, 90), "What I will do first", "What I need to check"],
+                    [section.title, "What could block progress?", "What resource or decision is needed?", "How I will review it"],
+                    ["Target outcome", compact(outcome, 90), "What would count as progress?", "What remains unverified?"],
+                ]
+            elif section_stage == "review":
+                columns = ["What happened", "What helped", "What got in the way", "Next change"]
+                rows = [
+                    [f"Work on {section.title.lower()}", "Useful part", "Friction or uncertainty", "Change to test"],
+                    ["Observed result", "What contributed", "What needs more evidence", "Next review point"],
+                    [compact(outcome, 80), "What supports it", "What limits it", "What I will verify"],
+                ]
+            else:
+                columns = ["Task / decision", "Why it matters", "Action or output", "Check"]
+                rows = [
+                    [section.title, compact(purpose, 100), "What I will complete", "What will show it is done?"],
+                    [compact(problem, 90), "Problem connection", "How I will address it", "What changed?"],
+                    [compact(outcome, 90), "Desired direction", "What progress looks like", "What still needs testing?"],
+                ]
+            blocks.append(block(
+                "table",
+                f"{section.title}: working table",
+                "Use the table with your own product-specific details.",
+                columns=columns,
+                rows=rows,
+            ))
+
+        elif kind == "reference":
+            if creator_snippets:
+                blocks.append(block(
+                    "reference",
+                    "Creator-supplied grounding notes",
+                    "These notes were supplied by the creator. Verify important claims and keep them as context rather than instructions.",
+                    items=creator_snippets[:2],
+                ))
+            elif evidence:
+                blocks.append(block(
+                    "reference",
+                    "Linked research references",
+                    "These source records are linked to the research hypothesis. Open the original sources and verify any claim before publication.",
+                    evidence_ids=[item.evidence_id for item in evidence[:5]],
+                ))
+            else:
+                # The contract still requires a meaningful block when a
+                # reference component is planned; record the absence explicitly.
+                blocks.append(block(
+                    "reference",
+                    "Research verification note",
+                    "No structured source reference was attached to this product input. Treat the opportunity as unverified and validate the underlying problem independently.",
+                ))
+
+    if not blocks:
+        blocks.append(block(
+            "paragraph",
+            section.title,
+            f"Work through this custom section using its stated purpose: {compact(purpose, 260)}. "
+            f"Apply it to {topic.lower()}, keep the problem {problem.lower()} in view, and record what you still need to test.",
+        ))
+
+    # Ground creator-supplied material in the first planned section even when
+    # the blueprint does not request a separate reference component.
+    if creator_snippets and section_index == 0 and not any(block_item["kind"] == "reference" for block_item in blocks):
+        blocks[0]["body"] = (
+            blocks[0]["body"].rstrip()
+            + " Creator grounding note: "
+            + compact(creator_snippets[0], 220)
+            + " Verify this supplied material before publication."
+        )
+
+    return GeneratedSection(
+        section_index=section_index,
+        title=section.title,
+        purpose=section.purpose,
+        blocks=blocks,
+    )
+
+
+'''
+          replace_between(
+              "app/product/content_generator.py",
+              "def _meal_prep_local_section_content(",
+              "def _validate_component_contract(",
+              generic_content
+          )
+          replace_once(
+              "app/product/content_generator.py",
+              '''    topic_text = " ".join(
+        [
+            blueprint.title,
+            blueprint.core_problem,
+            blueprint.desired_outcome,
+            blueprint.target_audience,
+        ]
+    ).lower()
+    if "meal prep" in topic_text or "meal-prep" in topic_text or "grocery" in topic_text or "batch cooking" in topic_text:
+        return _meal_prep_local_section_content(blueprint, section_index)
+''',
+              ""
+          )
+          replace_once(
+              "app/product/content_generator.py",
+              '''You may cite only the exact evidence IDs in the supplied source list; include their IDs in a reference block only when relevant.
+''',
+              '''You may cite only the exact evidence IDs in the supplied source list; when the approved section includes a reference component, use the supplied IDs and do not invent new ones.
+'''
+          )
+
+          # 4) Research architecture: attach concrete market context + validation findings
+          # to each opportunity, without claiming that a listing proves demand.
+          replace_once(
+              "app/product/architect.py",
+              "from app.database.models import Opportunity, ProblemSignal",
+              "from app.database.models import MarketplaceGap, Opportunity, ProblemSignal"
+          )
+          replace_once(
+              "app/product/architect.py",
+              "def architect_opportunities(topic: str, problems: List[ProblemSignal], spending: Dict, gaps: Dict, evidence_count: int) -> List[Opportunity]:",
+              "def architect_opportunities(topic: str, problems: List[ProblemSignal], spending: Dict, gaps: Dict, evidence_count: int, marketplace_gaps: List[MarketplaceGap] | None = None) -> List[Opportunity]:"
+          )
+          replace_once(
+              "app/product/architect.py",
+              '''    gap_status = "observed" if has_observed_gap else "insufficient_evidence"
+    # Legacy field name is retained in persisted models, but this is only a
+''',
+              '''    gap_status = "observed" if has_observed_gap else "insufficient_evidence"
+    market_context = []
+    for listing in (marketplace_gaps or [])[:8]:
+        market_context.append(
+            " | ".join(
+                part for part in [
+                    f"{listing.marketplace}: {listing.title}".strip(),
+                    f"format={listing.format}" if listing.format else "",
+                    f"observed_price={listing.price}" if listing.price else "observed_price=not found",
+                    f"rating={listing.rating}" if listing.rating and listing.rating != "Not found" else "",
+                    f"gap_signal={listing.gap_signal}" if listing.gap_signal else "",
+                    f"review_note={listing.review_insights[0]}" if listing.review_insights else "",
+                ]
+                if part
+            )[:900]
+        )
+    # Legacy field name is retained in persisted models, but this is only a
+'''
+          )
+          replace_once(
+              "app/product/architect.py",
+              '''            components=["Quick-start diagnostic", "Modular implementation workflow", "Examples for three common scenarios", "Progress tracker and review checklist"],
+            differentiation=[f"Built around the observed problem-language excerpt: {problem.problem.lower()}", "Short path from insight to implementation", "Evidence links included for every major assumption"],
+            risks=["Heuristic extraction can miss nuance or sarcasm", "Payment-language proxy is not demonstrated willingness to pay, a sale, or a demand forecast", "Search coverage depends on public endpoint availability"],
+            next_steps=["Interview five people in the target audience", "Offer a paid pilot with the core workflow", "Measure activation, completion, and refund objections", result["label"]],
+''',
+              '''            components=["Quick-start diagnostic", "Modular implementation workflow", "Examples for three common scenarios", "Progress tracker and review checklist"],
+            differentiation=[
+                f"Built around the observed problem-language excerpt: {problem.problem.lower()}",
+                "Short path from insight to implementation",
+                "Evidence links included for every major assumption",
+            ],
+            risks=[
+                "Heuristic extraction can miss nuance or sarcasm",
+                "Payment-language proxy is not demonstrated willingness to pay, a sale, or a demand forecast",
+                "Search coverage depends on public endpoint availability",
+            ],
+            next_steps=["Interview five people in the target audience", "Offer a paid pilot with the core workflow", "Measure activation, completion, and refund objections", result["label"]],
+            validation_findings=[
+                f"Problem-language signal: {problem.evidence_items if problem.evidence_items is not None else 'not recorded'} distinct evidence item(s).",
+                f"Source-local contributor identifiers: {problem.unique_contributors if problem.unique_contributors is not None else 'not available'}; this is not a unique-person count across sources.",
+                f"Competition-gap evidence status: {gap_status}.",
+                f"Marketplace comparison context: {len(market_context)} listing record(s) attached when available.",
+                "Demand, willingness to pay, and product-market fit remain hypotheses until tested with intended users.",
+            ],
+            market_context=market_context,
+'''
+          )
+
+          # 5) Pass marketplace context into the opportunity architect.
+          replace_once(
+              "app/ui/web_interface.py",
+              "opportunities = architect_opportunities(topic, problems, spending, gaps, len(reportable_evidence))",
+              "opportunities = architect_opportunities(topic, problems, spending, gaps, len(reportable_evidence), marketplace_gaps=marketplace_gaps)"
+          )
+
+          # 6) Builder inputs now carry research-vs-creator mode and market context.
+          replace_once(
+              "app/ui/product_generator.py",
+              '''        validation_steps=opportunity.next_steps,
+    )
+''',
+              '''        validation_steps=opportunity.next_steps,
+        research_backed=report.scoring_version != "manual_topic_v1",
+        market_context=list(getattr(opportunity, "market_context", []))[:12],
+    )
+'''
+          )
+          replace_once(
+              "app/ui/product_generator.py",
+              '''    elif not is_manual_topic:
+        st.warning("No source record could be directly linked to this problem signal. The blueprint will retain the research hypothesis and should be treated as needing validation.")
+''',
+              '''    elif not is_manual_topic:
+        st.warning("No source record could be directly linked to this problem signal. The blueprint will retain the research hypothesis and should be treated as needing validation.")
+
+    if inputs.research_backed:
+        with st.expander("Research + market context carried into this product", expanded=False):
+            st.caption("These records are context for product decisions, not proof of demand. Compare the original listings before making pricing, differentiation, or positioning claims.")
+            for finding in getattr(opportunity, "validation_findings", []):
+                st.write(f"• {finding}")
+            for record in inputs.market_context:
+                st.write(f"• {record}")
+'''
+          )
+          # Clean the edited provider inputs again after user changes.
+          replace_once(
+              "app/ui/product_generator.py",
+              '''                evidence=values["evidence"],
+                    validation_steps=_line_items(validation),
+                    reference_material=reference_material,
+                )
+''',
+              '''                evidence=values["evidence"],
+                    validation_steps=_line_items(validation),
+                    reference_material=reference_material,
+                    research_backed=bool(values.get("research_backed", False)),
+                    market_context=list(values.get("market_context", [])),
+                )
+'''
+          )
+          # Save research mode/context with generated blueprint inputs (already model-dumped,
+          # so no extra storage code is required).
+          # Show review checks explicitly in the QA UI.
+          replace_once(
+              "app/ui/product_generator.py",
+              'expanded=check.get("status") == "FLAG" or check.get("status") == "NOT RUN"',
+              'expanded=check.get("status") in {"FLAG", "NOT RUN", "REVIEW"}'
+          )
+
+          # 7) QA: stronger concept/readiness audit. REVIEW is advisory; only
+          # FLAG/NOT RUN block the final gate. This avoids pretending token overlap
+          # is a semantic proof while still surfacing weak alignment.
+          qa_function = r'''def _stem(value: str) -> str:
+    token = re.sub(r"[^a-z0-9]", "", value.lower())
+    for suffix in ("ization", "ations", "ation", "ments", "ment", "ingly", "edly", "ing", "ers", "ies", "es", "ed", "s"):
+        if len(token) > len(suffix) + 3 and token.endswith(suffix):
+            token = token[: -len(suffix)]
+            break
+    return token
+
+
+def _concept_coverage(source_text: str, target_text: str) -> tuple[int, int, set[str]]:
+    source_terms = sorted(_tokens(source_text))
+    target_terms = _tokens(target_text)
+    target_stems = {_stem(term) for term in target_terms}
+    matched = []
+    for term in source_terms:
+        stem = _stem(term)
+        if term in target_terms or stem in target_stems:
+            matched.append(term)
+    return len(matched), len(source_terms), set(matched)
+
+
+def _distinct_reference_terms(reference_material: str) -> set[str]:
+    return _tokens(reference_material) - {
+        "provided", "reference", "material", "notes", "source", "example", "examples",
+        "product", "digital", "information", "content", "reader", "use", "using",
+    }
+
+
+def run_product_qa(
+    blueprint: ProductBlueprint,
+    content: ProductContent,
+    inputs: ProductInputs,
+    *,
+    design: dict[str, str],
+    visual_assets: list[dict] | None = None,
+    preview_html: str | None = None,
+) -> dict[str, Any]:
+    """Run transparent deterministic QA with advisory REVIEW findings and hard blockers."""
+    assets = visual_assets or []
+    checks: list[dict[str, Any]] = []
+    expected = {index: section for index, section in enumerate(blueprint.outline)}
+    actual = {section.section_index: section for section in content.sections}
+    missing = [f"Section {index + 1}: {expected[index].title}" for index in expected if index not in actual]
+    extra = [f"Section {index + 1}: {section.title}" for index, section in actual.items() if index not in expected]
+    mismatched = [
+        f"Section {index + 1}: saved title “{actual[index].title}” differs from outline title “{expected[index].title}”."
+        for index in expected.keys() & actual.keys()
+        if actual[index].title.strip().casefold() != expected[index].title.strip().casefold()
+    ]
+    structure_issues = [*(f"Missing {item}." for item in missing), *(f"Unexpected {item}." for item in extra), *mismatched]
+    checks.append(_check(
+        "Outline coverage", "Content", "FLAG" if structure_issues else "PASS",
+        f"Compared {len(actual)} saved sections with {len(expected)} approved outline sections.",
+        "Exact section-index and case-insensitive title comparison; partial drafts are hard blockers.", structure_issues,
+    ))
+
+    blocks = _text_blocks(content)
+    nonempty_sections = [section for section in content.sections if any((block.body.strip() or block.items or block.rows) for block in section.blocks)]
+    empty_sections = [f"Section {section.section_index + 1} ({section.title})" for section in content.sections if section not in nonempty_sections]
+    checks.append(_check(
+        "Empty content sections", "Content", "FLAG" if empty_sections else "PASS",
+        f"Checked all {len(content.sections)} saved sections for at least one non-empty block.",
+        "Checks saved structured text, list items, and table rows; does not judge usefulness.", [f"{item} has no usable body, list item, or table row." for item in empty_sections],
+    ))
+
+    repetition_issues = []
+    candidates = [(label, re.sub(r"\W+", " ", text.lower()).strip()) for label, text, _ in blocks if len(text.strip()) >= 35]
+    for left in range(len(candidates)):
+        for right in range(left + 1, len(candidates)):
+            a, b = candidates[left][1], candidates[right][1]
+            if len(a) < 35 or len(b) < 35:
+                continue
+            ratio = _shingle_similarity(a, b)
+            if ratio >= 0.90:
+                repetition_issues.append(f"{candidates[left][0]} and {candidates[right][0]} are near-duplicates (text similarity {ratio:.0%}); review or rewrite one block.")
+    checks.append(_check(
+        "Repeated content", "Content", "FLAG" if repetition_issues else "PASS",
+        "Compared non-trivial content blocks for exact or very high textual similarity.",
+        "Deterministic character 5-gram Jaccard threshold >= 90%; paraphrased or concept-level repetition can still be missed.", repetition_issues,
+    ))
+
+    contradiction_issues = _contradiction_candidates(blocks)
+    checks.append(_check(
+        "Contradiction candidates", "Content", "FLAG" if contradiction_issues else "PASS",
+        "Searched for sentence pairs with identical wording after removing an explicit negation cue.",
+        "Conservative negation-pattern heuristic only; human review is required for flagged pairs.", contradiction_issues,
+    ))
+
+    grammar_issues = []
+    for label, text, _ in blocks:
+        for pattern, message in (
+            (r"\s{2,}", "repeated spaces"),
+            (r"\s+[,.!?;:]", "space before punctuation"),
+            (r"[!?.,]{2,}", "repeated punctuation"),
+            (r"\bi\b", "lowercase standalone ‘i’"),
+        ):
+            if re.search(pattern, text):
+                grammar_issues.append(f"{label}: possible {message}.")
+        for sentence in _sentence_candidates(text):
+            first = re.search(r"[A-Za-z]", sentence)
+            if first and sentence[first.start()].islower() and len(sentence) > 20:
+                grammar_issues.append(f"{label}: sentence may start with lowercase text (“{sentence[:90]}”).")
+                break
+    checks.append(_check(
+        "Grammar / formatting candidates", "Content", "FLAG" if grammar_issues else "PASS",
+        "Scanned saved block text for a small set of common mechanical problems.",
+        "Rules cover repeated spaces, spaces before punctuation, repeated punctuation, lowercase standalone ‘i’, and lowercase sentence starts.", grammar_issues,
+    ))
+
+    claim_issues = []
+    known_ids = {item.evidence_id for item in inputs.evidence}
+    used_ids = {evidence_id for _, _, block in blocks for evidence_id in block.evidence_ids}
+    unknown_ids = sorted(used_ids - known_ids)
+    for evidence_id in unknown_ids:
+        claim_issues.append(f"Citation ID {evidence_id} is not among the evidence references supplied with this product.")
+    for label, text, block in blocks:
+        for match in ABSOLUTE_CLAIM_RE.finditer(text):
+            excerpt = text[max(0, match.start() - 45):min(len(text), match.end() + 60)].replace("\n", " ")
+            claim_issues.append(f"{label}: absolute/guarantee-style wording needs evidence and careful qualification (“{excerpt[:150]}”).")
+        if NUMBER_CLAIM_RE.search(text) and not block.evidence_ids:
+            match = NUMBER_CLAIM_RE.search(text)
+            excerpt = text[max(0, match.start() - 45):min(len(text), match.end() + 60)].replace("\n", " ")
+            claim_issues.append(f"{label}: specific numeric statement has no evidence ID on that block; verify or cite it (“{excerpt[:150]}”).")
+    checks.append(_check(
+        "Unsupported-claim candidates", "Content / evidence", "FLAG" if claim_issues else "PASS",
+        "Checked supplied citation IDs and scanned for absolute/guarantee wording and specific numeric claims.",
+        "Heuristic only: linked IDs are not proof that a claim is true, and claims without these patterns may still need sourcing.", claim_issues,
+    ))
+
+    filler_issues = []
+    for label, text, _ in blocks:
+        for phrase in FILLER_PHRASES:
+            if phrase in text.lower():
+                filler_issues.append(f"{label}: consider removing or replacing the filler phrase “{phrase}”.")
+    checks.append(_check(
+        "Common filler phrases", "Content", "FLAG" if filler_issues else "PASS",
+        "Searched for a short, named list of generic filler phrases.",
+        "Exact phrase list only; this does not measure overall concision or usefulness.", filler_issues,
+    ))
+
+    vague_patterns = ("do this", "as needed", "handle accordingly", "do what works", "repeat as necessary", "etc.")
+    instruction_issues = []
+    for label, text, block in blocks:
+        candidates_for_check = ([text] if block.kind in {"steps", "action_steps"} else list(block.items) if block.items else [])
+        for value in candidates_for_check:
+            if len(value.split()) <= 3:
+                instruction_issues.append(f"{label}: short instruction (“{value[:100]}”) may need a concrete action or detail.")
+            if any(phrase in value.lower() for phrase in vague_patterns):
+                instruction_issues.append(f"{label}: vague instruction wording (“{value[:100]}”) may need a measurable next step.")
+    checks.append(_check(
+        "Unclear instruction candidates", "Content", "FLAG" if instruction_issues else "PASS",
+        "Reviewed action-step blocks and list items for very short or named vague phrases.",
+        "Length/phrase heuristics only; concise prompts can be intentional and clarity requires a human reader.", instruction_issues,
+    ))
+
+    content_text = " ".join(
+        [section.title + " " + section.purpose for section in content.sections]
+        + [text for _, text, _ in blocks]
+    )
+    problem_match_count, problem_total, problem_matched = _concept_coverage(inputs.problem, content_text)
+    if problem_total == 0:
+        problem_status = "REVIEW"
+        problem_message = "No distinctive problem concepts were available for deterministic coverage analysis."
+        problem_issues = ["Review the researched problem manually and confirm that the saved sections directly address it."]
+    else:
+        problem_ratio = problem_match_count / problem_total
+        problem_status = "PASS" if problem_ratio >= 0.30 else "REVIEW"
+        problem_message = f"Matched {problem_match_count} of {problem_total} problem concepts using exact and simple morphological matching."
+        problem_issues = [] if problem_status == "PASS" else [
+            f"Only {problem_match_count} of {problem_total} problem concepts were found. Review whether the content addresses the researched problem rather than merely sharing its wording."
+        ]
+    checks.append(_check(
+        "Problem concept coverage", "Product fit", problem_status,
+        problem_message,
+        "Deterministic exact/stem-aware term coverage; this is a relevance signal, not semantic proof.", problem_issues,
+    ))
+
+    outcome_match_count, outcome_total, outcome_matched = _concept_coverage(blueprint.desired_outcome, content_text)
+    if outcome_total == 0:
+        outcome_status = "REVIEW"
+        outcome_message = "No distinctive desired-outcome concepts were available for deterministic coverage analysis."
+        outcome_issues = ["Review whether the product content makes the intended reader outcome clear."]
+    else:
+        outcome_ratio = outcome_match_count / outcome_total
+        outcome_status = "PASS" if outcome_ratio >= min(0.45, 2 / max(1, outcome_total)) else "REVIEW"
+        outcome_message = f"Matched {outcome_match_count} of {outcome_total} desired-outcome concepts using exact and simple morphological matching."
+        outcome_issues = [] if outcome_status == "PASS" else [
+            f"Only {outcome_match_count} of {outcome_total} outcome concepts were found. Review whether the saved activities actually lead toward the stated outcome."
+        ]
+    checks.append(_check(
+        "Outcome concept coverage", "Product fit", outcome_status,
+        outcome_message,
+        "Deterministic exact/stem-aware term coverage; this is a relevance signal, not an achievement guarantee.", outcome_issues,
+    ))
+
+    reference_terms = _distinct_reference_terms(inputs.reference_material)
+    reference_target_terms = _tokens(content_text)
+    reference_matches = sorted(reference_terms & reference_target_terms)
+    if inputs.reference_material.strip():
+        reference_status = "PASS" if reference_matches else "REVIEW"
+        reference_issues = [] if reference_matches else [
+            "Creator/reference material was supplied, but no distinctive terms were found in saved content. Recheck that the generated product actually uses the supplied material."
+        ]
+        reference_message = f"Found {len(reference_matches)} distinctive supplied-material term(s) in saved product text."
+    else:
+        reference_status = "PASS"
+        reference_issues = []
+        reference_message = "No extra creator/reference material was supplied; this check has no additional requirement."
+    checks.append(_check(
+        "Creator material usage", "Product fit / evidence", reference_status,
+        reference_message,
+        "Exact distinctive-term presence only; it does not prove correct interpretation of supplied material.", reference_issues,
+    ))
+
+    if inputs.research_backed:
+        evidence_count = len(inputs.evidence)
+        evidence_status = "PASS" if evidence_count else "FLAG"
+        evidence_issues = [] if evidence_count else [
+            "This product came from a research-backed opportunity, but no linked evidence record was carried into the builder. Re-run or re-link the research before publication."
+        ]
+        evidence_message = f"{evidence_count} linked evidence reference(s) are attached to the product inputs."
+    else:
+        evidence_count = len(inputs.evidence)
+        evidence_status = "PASS"
+        evidence_issues = []
+        evidence_message = f"Creator-topic mode: {evidence_count} supplied reference record(s) are attached; independent market evidence is not claimed."
+    checks.append(_check(
+        "Research evidence readiness", "Research / evidence", evidence_status,
+        evidence_message,
+        "Counts source references carried into the product builder; it does not assess source quality, independence, or truth.", evidence_issues,
+    ))
+
+    if inputs.research_backed:
+        market_status = "PASS" if inputs.market_context else "REVIEW"
+        market_issues = [] if inputs.market_context else [
+            "No marketplace listing context was attached. Comparison with similar seller offerings is not verified in this product snapshot."
+        ]
+        market_message = (
+            f"{len(inputs.market_context)} marketplace/context record(s) are attached for comparison."
+            if inputs.market_context
+            else "Marketplace comparison data is unavailable for this opportunity."
+        )
+        diff_status = "PASS" if inputs.differentiation else "REVIEW"
+        diff_issues = [] if inputs.differentiation else [
+            "No explicit differentiation statement was carried into the product inputs. Compare the product directly with observed alternatives before publishing positioning claims."
+        ]
+        diff_message = (
+            f"{len(inputs.differentiation)} differentiation statement(s) are recorded."
+            if inputs.differentiation
+            else "No explicit differentiation statement is recorded."
+        )
+    else:
+        market_status, market_message, market_issues = "PASS", "Creator-topic mode: market comparison was not run.", []
+        diff_status, diff_message, diff_issues = ("PASS", f"{len(inputs.differentiation)} differentiation statement(s) supplied by the creator.", [])
+    checks.append(_check("Market comparison context", "Research / competition", market_status, market_message,
+                         "Presence/absence check on attached seller/listing context; it does not claim that listing presence proves a gap or demand.", market_issues))
+    checks.append(_check("Differentiation captured", "Product fit / competition", diff_status, diff_message,
+                         "Presence check only; meaningful differentiation still requires side-by-side human or evidence-grounded comparison.", diff_issues))
+
+    action_kinds = {block.kind for _, _, block in blocks if block.kind in {"steps", "action_steps", "checklist", "exercise", "worksheet", "table", "reflection"}}
+    actionable_issues = []
+    if not action_kinds:
+        actionable_issues.append("No steps, checklists, exercises, worksheets, reflection prompts, or tables were found; consider adding at least one practical component.")
+    checks.append(_check("Actionable components", "Product fit", "FLAG" if actionable_issues else "PASS",
+                         f"Found these practical component types: {', '.join(sorted(action_kinds)) or 'none'}.",
+                         "Counts typed blocks only; component presence does not show that instructions are usable.", actionable_issues))
+
+    expected_kinds = _expected_practical_kinds(blueprint.product_type)
+    type_issues = []
+    if expected_kinds and not (expected_kinds & action_kinds):
+        type_issues.append(f"No practical block type associated with {blueprint.product_type} was found; expected at least one of: {', '.join(sorted(expected_kinds))}.")
+    checks.append(_check("Structure for selected product type", "Product fit", "FLAG" if type_issues else "PASS",
+                         f"Product type: {blueprint.product_type}. Applicable component expectations: {', '.join(sorted(expected_kinds)) or 'no type-specific rule configured'}.",
+                         "Small explicit type-to-block rule map; does not decide whether a type choice is strategically correct.", type_issues))
+
+    component_issues = []
+    for section in sorted(content.sections, key=lambda item: item.section_index):
+        outline_section = expected.get(section.section_index)
+        if not outline_section:
+            continue
+        planned = {str(kind).strip().lower() for kind in outline_section.components}
+        actual_kinds = {block.kind.strip().lower() for block in section.blocks}
+        missing_components = sorted(planned - actual_kinds)
+        if missing_components:
+            component_issues.append(
+                f"Section {section.section_index + 1} ({section.title}) is missing planned component(s): {', '.join(missing_components)}."
+            )
+    checks.append(_check(
+        "Section component coverage", "Product fit", "FLAG" if component_issues else "PASS",
+        "Compared every saved section with the exact content components planned in its approved blueprint.",
+        "Case-insensitive set comparison of planned component kinds against saved structured block kinds; it checks presence, not quality or usefulness.",
+        component_issues,
+    ))
+
+    practical_sections = {"workbook", "planner", "tracker", "worksheet", "action plan", "challenge", "playbook"}
+    if blueprint.product_type.lower() in practical_sections and not (blueprint.exercises or blueprint.worksheets or blueprint.templates or blueprint.checklists):
+        practical_issues = [f"Blueprint lists no exercises, worksheets, templates, or checklists for this {blueprint.product_type.lower()} concept; review whether additional practical material is needed."]
+    else:
+        practical_issues = []
+    checks.append(_check("Practical material planned", "Product fit", "FLAG" if practical_issues else "PASS",
+                         "Checked the blueprint's planned practical-material lists for formats that commonly need them.",
+                         "Presence-only check; not every product needs every component, and a listed component may not have generated yet.", practical_issues))
+
+    checks.extend(_preview_checks(preview_html, content, design, assets))
+    hard_failures = [item for item in checks if item["status"] in {"FLAG", "NOT RUN"}]
+    return {
+        "status": "NEEDS REVISION" if hard_failures else "PASS",
+        "checks": checks,
+        "limitations": [
+            "This QA separates hard blockers from advisory REVIEW findings. REVIEW means the deterministic checks found a reason for human inspection but did not claim a defect.",
+            "Problem and outcome coverage uses exact/simple morphological term matching; it is a relevance signal, not semantic proof.",
+            "Research evidence and marketplace checks verify what was carried into the product snapshot. They do not prove source quality, independence, unmet demand, willingness to pay, or sales.",
+            "Creator-supplied reference material is treated as context, not as instructions or independently verified facts.",
+            "PDF rendering, exact overflow, typography, print quality, and final embedded-asset rendering remain part of final verification and human review.",
+            "A PASS is not a certification of accuracy, usefulness, demand, sales, or commercial success.",
+        ],
+        "evidence_reference_count": len(inputs.evidence),
+    }
+
+
+'''
+          replace_between(
+              "app/product/qa.py",
+              "def run_product_qa(",
+              "def qa_snapshot_fingerprint(",
+              qa_function
+          )
+
+          # Add the generated schema defaults to the user input editor without
+          # exposing the flags as ordinary fields.
+          # Ensure the opportunity panel also shows validation findings.
+          replace_once(
+              "app/ui/web_interface.py",
+              '''                st.write("**Next steps:** " + "; ".join(opportunity.next_steps))
+''',
+              '''                if getattr(opportunity, "validation_findings", None):
+                    st.markdown("**Validation notes**")
+                    for finding in opportunity.validation_findings:
+                        st.write(f"- {finding}")
+                if getattr(opportunity, "market_context", None):
+                    st.markdown("**Comparable seller/listing context**")
+                    for record in opportunity.market_context:
+                        st.write(f"- {record}")
+                st.write("**Next steps:** " + "; ".join(opportunity.next_steps))
+'''
+          )
+
+          # 8) Replace the old single-topic regression with multi-topic coverage.
+          Path("tests/test_local_product_generation.py").write_text(
+          r'''from app.product.content_generator import generate_section_content
+from app.product.product_schema import ProductInputs
+from app.product.qa import run_product_qa
+from app.product.strategy import _local_blueprint, clean_product_inputs
+
+
+def _rendered_text(sections):
+    return " ".join(
+        " ".join(
+            [block.title, block.body, *block.items, *[" ".join(row) for row in block.rows]]
+        )
+        for section in sections
+        for block in section.blocks
+    ).lower()
+
+
+def test_local_generation_is_topic_and_section_aware_across_multiple_products():
+    cases = [
+        {
+            "title": "Meal Prep Clarity Kit",
+            "audience": "Busy adults who want a simpler kitchen routine",
+            "problem": "Meal planning, grocery decisions, and batch cooking feel scattered and time-consuming.",
+            "promise": "Create a realistic weekly meal-prep routine and make grocery and cooking decisions more clearly.",
+        },
+        {
+            "title": "Exam Study Planner",
+            "audience": "High school students preparing for exams",
+            "problem": "Study time gets scattered across subjects and students struggle to keep a realistic review routine.",
+            "promise": "Plan weekly study blocks, track review progress, and adjust the schedule when priorities change.",
+        },
+        {
+            "title": "Consultant Onboarding Playbook",
+            "audience": "Independent consultants onboarding new clients",
+            "problem": "Client onboarding steps are inconsistent, details get missed, and the first week takes too much manual coordination.",
+            "promise": "Create a repeatable client onboarding workflow with clear steps, handoffs, and review points.",
+        },
+    ]
+
+    signatures = []
+    for case in cases:
+        inputs = ProductInputs(
+            product_title=case["title"],
+            audience=case["audience"],
+            problem=case["problem"],
+            promise=case["promise"],
+            format_hints=["Workbook"],
+        )
+        blueprint = _local_blueprint(inputs, "Workbook")
+        sections = [generate_section_content(blueprint, i) for i in range(len(blueprint.outline))]
+        text = _rendered_text(sections)
+        assert any(term in text for term in ("meal", "grocery", "cooking")) if "Meal" in case["title"] else True
+        assert any(term in text for term in ("study", "exam", "review")) if "Exam" in case["title"] else True
+        assert any(term in text for term in ("onboarding", "client", "consultant")) if "Consultant" in case["title"] else True
+        assert "what i need to prepare:" in text or "what i still need to test or verify:" in text
+        signatures.append([tuple(block.kind for block in section.blocks) for section in sections])
+
+    assert len({repr(signature) for signature in signatures}) == 1
+    # Same structure is expected for the same Workbook format; the content must
+    # vary by the supplied topic/problem/outcome rather than by a hard-coded topic.
+    assert "meal prep clarity kit" in _rendered_text(
+        [generate_section_content(_local_blueprint(ProductInputs(product_title=cases[0]["title"], audience=cases[0]["audience"], problem=cases[0]["problem"], promise=cases[0]["promise"]), "Workbook"), 0)]
+    )
+
+
+def test_creator_reference_material_is_used_in_local_generation():
+    inputs = ProductInputs(
+        product_title="Client Onboarding Checklist",
+        audience="Independent consultants",
+        problem="Client onboarding is inconsistent and key details are easy to miss.",
+        promise="Create a repeatable onboarding sequence and capture essential handoff details.",
+        format_hints=["Checklist"],
+        reference_material="Our studio uses a three-part kickoff note: goals, access details, and owner names. Review the note before the first client call.",
+    )
+    blueprint = _local_blueprint(inputs, "Checklist")
+    section = generate_section_content(blueprint, 0, reference_material=inputs.reference_material)
+    text = _rendered_text([section])
+    assert "kickoff" in text
+    assert "goals" in text or "access" in text
+
+
+def test_research_text_cleanup_removes_elongation_and_trims():
+    inputs = ProductInputs(
+        product_title="Meal Prep Clarity Kit",
+        audience="People working on meal prep who say waaayyyyy too much food is left over.",
+        problem="I'm so tired of spending time looking for recipes every week and trying to figure out what to cook.",
+        promise="Make weekly meal prep simpler and clearer.",
+        format_hints=["Workbook"],
+    )
+    cleaned = clean_product_inputs(inputs)
+    assert "waayyyyy" not in cleaned.audience.lower()
+    assert "waay" in cleaned.audience.lower()
+    assert cleaned.problem.startswith("I'm so tired")
+
+
+def test_local_generation_preserves_component_contract():
+    inputs = ProductInputs(
+        product_title="Weekly Project Planner",
+        audience="Freelance designers",
+        problem="Project tasks and deadlines get scattered across notes and messages.",
+        promise="Plan work in one place and keep deadlines visible.",
+        format_hints=["Planner"],
+    )
+    blueprint = _local_blueprint(inputs, "Planner")
+    sections = [generate_section_content(blueprint, i) for i in range(len(blueprint.outline))]
+    for index, section in enumerate(sections):
+        assert {block.kind for block in section.blocks} == {kind.lower() for kind in blueprint.outline[index].components}
+
+
+def test_blueprint_rejects_unknown_content_components():
+    inputs = ProductInputs(
+        product_title="Test Product",
+        audience="A defined audience",
+        problem="A clear problem that needs solving.",
+        promise="A concrete intended outcome.",
+    )
+    blueprint = _local_blueprint(inputs, "Workbook")
+    payload = blueprint.model_dump(mode="json")
+    payload["outline"][0]["components"] = ["paragraph", "unknown_renderer_block"]
+    from pydantic import ValidationError
+    try:
+        type(blueprint).model_validate(payload)
+    except ValidationError:
+        return
+    raise AssertionError("Blueprint accepted an unknown content component.")
+
+
+def test_qa_surfaces_market_and_creator_context_without_fake_scoring():
+    inputs = ProductInputs(
+        product_title="Client Onboarding Checklist",
+        audience="Independent consultants",
+        problem="Client onboarding steps are inconsistent and details get missed.",
+        promise="Create a repeatable onboarding sequence with clear handoffs.",
+        format_hints=["Checklist"],
+        research_backed=True,
+        market_context=["Etsy: Client Onboarding Template | format=checklist | observed_price=$12"],
+        differentiation=["Includes a structured handoff review and source-linked evidence."],
+    )
+    blueprint = _local_blueprint(inputs, "Checklist")
+    sections = [generate_section_content(blueprint, i, inputs.evidence, inputs.reference_material) for i in range(len(blueprint.outline))]
+    from app.product.product_schema import ProductContent
+    content = ProductContent(
+        product_title=blueprint.title,
+        subtitle=blueprint.subtitle,
+        blueprint_fingerprint="a" * 64,
+        sections=sections,
+    )
+    result = run_product_qa(
+        blueprint,
+        content,
+        inputs,
+        design={"template_id": "minimal_professional", "page_size": "letter"},
+        preview_html=None,
+    )
+    names = {check["name"]: check for check in result["checks"]}
+    assert names["Market comparison context"]["status"] == "PASS"
+    assert names["Differentiation captured"]["status"] == "PASS"
+    assert "ranking" not in result.get("status", "").lower()
+''',
+          encoding="utf-8"
+          )
+
+          # 9) Remove this one-time workflow from the same commit.
+          Path(".github/workflows/refactor_productpulse.yml").unlink()
+      - name: Commit refactor
+        run: |
+          git config user.name "productpulse-refactor-bot"
+          git config user.email "actions@github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Build generic research-to-product validation pipeline"
+          git push
