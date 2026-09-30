@@ -112,6 +112,60 @@ def _line_items(text: str) -> list[str]:
     return [line.strip().lstrip("-• ").strip() for line in text.splitlines() if line.strip()]
 
 
+def _render_research_basis(
+    report: Report,
+    opportunity: Opportunity,
+    inputs: ProductInputs,
+) -> None:
+    """Show the evidence and market context that actually reached the product builder."""
+    if report.scoring_version == "manual_topic_v1":
+        with st.expander("Research foundation", expanded=False):
+            st.info(
+                "Creator-topic mode: this product starts from your supplied brief and materials. "
+                "It does not claim independent market validation."
+            )
+            if inputs.reference_material.strip():
+                st.caption("Creator-supplied material is available to the content generator as grounding context.")
+        return
+
+    with st.expander("Research foundation & market comparison", expanded=False):
+        audit = report.research_audit or {}
+        checks = audit.get("checks", [])
+        if checks:
+            st.markdown("**Research readiness signals**")
+            for check in checks:
+                st.write(f"{check.get('status', 'REVIEW')} · {check.get('name', 'Research check')} — {check.get('message', '')}")
+
+        if getattr(opportunity, "validation_findings", None):
+            st.markdown("**Validation findings**")
+            for finding in opportunity.validation_findings:
+                st.write(f"- {finding}")
+
+        if inputs.evidence:
+            st.markdown("**Linked evidence**")
+            for reference in inputs.evidence:
+                label = f"{reference.source_type}: {reference.source_title} · {reference.evidence_id}"
+                with st.expander(label, expanded=False):
+                    st.caption(reference.url or "Source URL not recorded")
+                    excerpt = reference.source_excerpt or reference.customer_language
+                    if excerpt:
+                        st.write(excerpt)
+        else:
+            st.warning("No linked evidence records reached this product snapshot.")
+
+        if inputs.market_context:
+            st.markdown("**Comparable seller/listing context**")
+            for record in inputs.market_context:
+                st.write(f"- {record}")
+        else:
+            st.caption("No comparable marketplace/listing context is attached to this product snapshot.")
+
+        if report.research_audit.get("next_validation"):
+            st.markdown("**Next validation work**")
+            for step in report.research_audit["next_validation"]:
+                st.write(f"- {step}")
+
+
 def _page_summary(blueprint: ProductBlueprint) -> None:
     st.subheader("Product blueprint")
     st.info("Research-backed product concept — an evidence-supported hypothesis worth validating, not a guarantee of demand or sales.")
@@ -1115,6 +1169,7 @@ def render_product_generator(
         st.info("This blueprint is an evidence-supported hypothesis worth validating. It is not a claim of guaranteed demand, sales, or commercial success.")
     st.markdown(f"**Selected opportunity:** {opportunity.name}")
     st.write(f"**Research promise:** {opportunity.promise}")
+    _render_research_basis(report, opportunity, inputs)
     if inputs.evidence:
         st.markdown("**Supplied reference material**" if is_manual_topic else "**Linked evidence**")
         for reference in inputs.evidence:
