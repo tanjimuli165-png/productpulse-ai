@@ -13,7 +13,7 @@ from app.product.product_schema import (
     ProductContent,
     ProductInputs,
 )
-from app.product.qa import qa_snapshot_fingerprint, run_product_qa
+from app.product.qa import final_verification, qa_snapshot_fingerprint, run_product_qa
 from app.product.storage import ProductStore
 from app.product.template_engine import render_product_html
 
@@ -269,6 +269,33 @@ class ProductQATests(unittest.TestCase):
         self.assertEqual(checks["Market comparison context"]["status"], "REVIEW")
         self.assertEqual(checks["Differentiation captured"]["status"], "REVIEW")
         self.assertEqual(checks["Differentiation evidence signal"]["status"], "REVIEW")
+
+    def test_final_verification_can_pass_after_actual_pdf_is_supplied(self):
+        from reportlab.pdfgen import canvas
+
+        output = BytesIO()
+        pdf = canvas.Canvas(output)
+        pdf.drawString(72, 720, "Weekly Client Work Workbook")
+        pdf.drawString(72, 700, "Plan focused client work.")
+        pdf.save()
+
+        blueprint = sample_blueprint()
+        content = sample_content()
+        inputs = sample_inputs()
+        preview = make_preview(blueprint, content, inputs)
+        result = final_verification(
+            blueprint,
+            content,
+            inputs,
+            design={"template_id": "minimal_professional", "page_size": "letter"},
+            visual_assets=[],
+            preview_html=preview,
+            pdf_bytes=output.getvalue(),
+        )
+        checks = self.checks_by_name(result)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(checks["Final PDF rendering"]["status"], "NOT RUN")
+        self.assertEqual(checks["Final PDF structural verification"]["status"], "PASS")
 
     def test_fingerprint_changes_when_content_design_visual_or_preview_changes(self):
         blueprint, content = sample_blueprint(), sample_content()
