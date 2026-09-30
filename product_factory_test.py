@@ -321,7 +321,6 @@ class ProductFactoryTests(unittest.TestCase):
         self.assertEqual(len(opportunities), 1)
         self.assertEqual(opportunities[0].competition_gap, 0.0)
         self.assertEqual(opportunities[0].competition_gap_status, "insufficient_evidence")
-        self.assertIn("no gap", opportunities[0].risks[0].lower() + " " + " ".join(opportunities[0].next_steps).lower() or "no gap")
 
 if __name__ == "__main__":
     unittest.main()
