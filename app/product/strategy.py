@@ -202,6 +202,12 @@ def _local_blueprint(inputs: ProductInputs, selected_type: str) -> ProductBluepr
     promise = inputs.promise.strip()
     audience = inputs.audience.strip()
     formats = inputs.format_hints[:3] or [selected_type]
+    # Keep the generated subtitle within ProductBlueprint.subtitle's 260-char limit
+    # even when the research audience field is long. Preserve whole words and the
+    # beginning of the audience description rather than failing blueprint validation.
+    audience_for_subtitle = " ".join(audience.split())
+    if len(audience_for_subtitle) > 210:
+        audience_for_subtitle = audience_for_subtitle[:207].rsplit(" ", 1)[0] + "..."
     profile = product_type_profile(selected_type)
     section_specs = list(profile["sections"])
     sections = [
@@ -217,7 +223,7 @@ def _local_blueprint(inputs: ProductInputs, selected_type: str) -> ProductBluepr
     ]
     return ProductBlueprint.model_validate({
         "title": title,
-        "subtitle": f"A practical {selected_type.lower()} for {audience}",
+        "subtitle": f"A practical {selected_type.lower()} for {audience_for_subtitle}",
         "target_audience": audience,
         "core_problem": problem,
         "desired_outcome": promise,
