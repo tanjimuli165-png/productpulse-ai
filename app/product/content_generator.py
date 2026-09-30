@@ -101,10 +101,13 @@ def _local_section_content(
     # This is the key safeguard against every product becoming the same
     # paragraph + steps + worksheet document.
     if has("paragraph"):
+        # The PDF already prints the section purpose directly below its heading.
+        # Keep this block reader-facing and topic-specific instead of repeating
+        # the same metadata sentence a second time.
         blocks.append(block(
             "paragraph",
-            section.title,
-            f"This section is for {audience}. It focuses on {purpose} and applies the product to the problem of {problem}, with the intended outcome of {outcome}.",
+            f"{section.title}: key context",
+            f"For {audience}, connect this section to the real situation behind {problem.lower()}. Use the material here to make progress toward {outcome.lower()} without assuming a guaranteed result.",
         ))
 
     if has("steps", "action_steps"):
