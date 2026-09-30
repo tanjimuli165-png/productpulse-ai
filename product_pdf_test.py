@@ -157,6 +157,7 @@ def save_pass_qa(store, product_id, user_id, blueprint_value, content_value, inp
     fingerprint = qa_snapshot_fingerprint(
         blueprint_value,
         content_value,
+        inputs=inputs_value,
         design={"template_id": template_id, "page_size": page_size},
         visual_assets=assets,
         preview_html=preview,
@@ -257,7 +258,8 @@ class ProductPdfExportTests(unittest.TestCase):
             evidence=self.product_inputs.evidence, visual_assets=assets,
         )
         fingerprint = qa_snapshot_fingerprint(
-            self.bp, self.content, design={"template_id": "clean_workbook", "page_size": "a4"},
+            self.bp, self.content, inputs=self.product_inputs,
+            design={"template_id": "clean_workbook", "page_size": "a4"},
             visual_assets=assets, preview_html=preview,
         )
         self.store.save_qa_run(
