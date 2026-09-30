@@ -79,6 +79,7 @@ def _local_section_content(
     outcome = " ".join(blueprint.desired_outcome.split()).strip()
     audience = " ".join(blueprint.target_audience.split()).strip()
     purpose = " ".join(section.purpose.split()).strip()
+    title_lower = section.title.lower()
     planned = list(dict.fromkeys(str(kind).strip().lower() for kind in section.components if str(kind).strip()))
 
     def compact(value: str, limit: int = 220) -> str:
@@ -305,25 +306,23 @@ def _local_section_content(
                     "Where the method was unclear or difficult:",
                     f"How this connects to {outcome_focus}:",
                 ],
-                "apply": [
-                    (
-                        [
-                            f"Scenario I will practice for {focus}:",
-                            "Inputs or details needed for the exercise:",
-                            "Decision or action I will take:",
-                            f"What I expect to learn about {outcome_focus}:",
-                            "What I would change in a second attempt:",
-                        ]
-                        if "exercise" in title_lower
-                        else [
-                            f"Concrete output or decision I need to create for {focus}:",
-                            "Source material, inputs, or constraints to use:",
-                            "Action, decision, or material completed:",
-                            f"How I will check the output against {outcome_focus}:",
-                            "What still needs testing or refinement:",
-                        ]
-                    )
-                ][0],
+                "apply": (
+                    [
+                        f"Scenario I will practice for {focus}:",
+                        "Inputs or details needed for the exercise:",
+                        "Decision or action I will take:",
+                        f"What I expect to learn about {outcome_focus}:",
+                        "What I would change in a second attempt:",
+                    ]
+                    if "exercise" in title_lower
+                    else [
+                        f"Concrete output or decision I need to create for {focus}:",
+                        "Source material, inputs, or constraints to use:",
+                        "Action, decision, or material completed:",
+                        f"How I will check the output against {outcome_focus}:",
+                        "What still needs testing or refinement:",
+                    ]
+                ),
                 "review": [
                     f"Observed result while addressing {focus}:",
                     "Helpful factors and remaining friction:",
