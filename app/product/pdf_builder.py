@@ -694,8 +694,9 @@ def _assemble_pdf(
         canvas.saveState()
         canvas.setStrokeColor(colors.HexColor("#D8E0E4"))
         canvas.setLineWidth(0.5)
+        page_text_font = "Bangla" if _BANGLA_FONT_READY else "Helvetica"
         if current_doc.page > 1:
-            canvas.setFont("Helvetica", 7.5)
+            canvas.setFont(page_text_font, 7.5)
             canvas.setFillColor(colors.HexColor("#637581"))
             canvas.drawString(left_margin, page_height - 0.34 * inch, content.product_title[:80])
             canvas.setStrokeColor(accent)
