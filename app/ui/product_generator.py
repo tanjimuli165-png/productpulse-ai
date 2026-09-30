@@ -1193,7 +1193,7 @@ def render_product_generator(
             )[:50000]
     inputs = ProductInputs.model_validate(raw_inputs)
     prefix = f"product_{product_id}"
-    st.title("AI Digital Product Factory")
+    st.title("ProductPulse AI")
     is_manual_topic = report.scoring_version == "manual_topic_v1"
     st.caption("Turn your own topic brief or a research-backed opportunity into a reviewable digital product blueprint.")
     if is_manual_topic:
