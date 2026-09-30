@@ -52,6 +52,8 @@ class Opportunity(BaseModel):
     differentiation: List[str]
     risks: List[str]
     next_steps: List[str]
+    validation_findings: List[str] = Field(default_factory=list, max_length=20)
+    market_context: List[str] = Field(default_factory=list, max_length=12)
 
 
 class MarketplaceGap(BaseModel):
