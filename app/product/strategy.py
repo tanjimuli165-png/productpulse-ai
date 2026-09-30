@@ -43,6 +43,7 @@ BLUEPRINT_JSON_SCHEMA: dict[str, Any] = {
                                 "worksheet", "table", "reflection", "action_steps", "reference",
                             ],
                         },
+                        "minItems": 1,
                         "maxItems": 12,
                     },
                 },
