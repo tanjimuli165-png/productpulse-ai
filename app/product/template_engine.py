@@ -252,8 +252,9 @@ def render_product_html(
             continue
         source = "data:" + mime_type + ";base64," + base64.b64encode(raw).decode("ascii")
         title = escape(str(asset.get("title", "Product visual"))[:120], quote=True)
+        caption = f'<figcaption>{title}</figcaption>' if asset.get("asset_type") == "upload" else ""
         visuals_by_placement.setdefault(placement, []).append(
-            f'<figure class="product-visual"><img src="{source}" alt="{title}"/><figcaption>{title}</figcaption></figure>'
+            f'<figure class="product-visual"><img src="{source}" alt="{title}"/>{caption}</figure>'
         )
     sections = sorted(content.sections, key=lambda section: section.section_index)
     total_pages = len(sections) + 1
@@ -264,8 +265,7 @@ def render_product_html(
         f'<p class="subtitle">{escape(subtitle)}</p>'
         f'<p class="audience"><strong>For:</strong> {escape(audience)}</p>'
         f'{"".join(visuals_by_placement.get("cover", []))}'
-        '<p>This is a research-backed product concept and evidence-supported hypothesis worth validating.</p>'
-        f'<footer class="page-footer"><span>{escape(template.footer_treatment)}</span><span>1 / {total_pages}</span></footer>'
+        f'<footer class="page-footer"><span>{escape(content.product_title)}</span><span>1 / {total_pages}</span></footer>'
         '</section>'
     )
     rendered_sections: list[str] = []
