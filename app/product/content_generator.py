@@ -453,7 +453,7 @@ GROUNDING_STOP_WORDS = {
 
 def _content_grounding_terms(value: str) -> list[str]:
     result: list[str] = []
-    for word in re.findall(r"[^\\W_]+", (value or "").lower(), flags=re.UNICODE):
+    for word in re.findall(r"[^\W_]+", (value or "").lower(), flags=re.UNICODE):
         if len(word) < 4 or word in GROUNDING_STOP_WORDS or word in result:
             continue
         result.append(word)
