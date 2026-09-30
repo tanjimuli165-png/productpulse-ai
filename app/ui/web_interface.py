@@ -52,6 +52,15 @@ def _restore_cookie_session(store: ReportStore, cookies: stx.CookieManager) -> N
         pass
     if not token:
         try:
+            # Force a fresh client-side cookie read. CookieManager caches the
+            # value from construction, which can be empty during the first
+            # browser-refresh pass until the component responds.
+            cookie_values = cookies.get_all(key="restore_auth_cookie")
+            token = cookie_values.get(AUTH_COOKIE)
+        except Exception:
+            pass
+    if not token:
+        try:
             token = cookies.get(AUTH_COOKIE)
         except Exception:
             pass
