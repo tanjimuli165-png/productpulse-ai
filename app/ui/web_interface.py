@@ -293,42 +293,48 @@ def render():
     st.set_page_config(page_title="ProductPulse AI", page_icon="◈", layout="wide")
     st.markdown("""
 <style>
-:root{--pp-ink:#0B1726;--pp-navy:#12263A;--pp-muted:#64748B;--pp-accent:#0F766E;--pp-bg:#F6F8FA;--pp-border:#E2E8F0;--pp-shadow:0 12px 34px rgba(15,23,42,.07)}
-.block-container{max-width:1180px;padding-top:1rem;padding-bottom:5rem}
-[data-testid="stAppViewContainer"]{background:radial-gradient(circle at 82% 0%,rgba(15,118,110,.09),transparent 30rem),linear-gradient(180deg,#F8FAFC 0%,#F5F7FA 48%,#F8FAFC 100%)}
-[data-testid="stHeader"]{background:rgba(248,250,252,.82);backdrop-filter:blur(14px)}
+:root{--pp-ink:#0F172A;--pp-navy:#134E4A;--pp-text:#334155;--pp-muted:#64748B;--pp-accent:#0F766E;--pp-soft:#E6F2F0;--pp-bg:#F8FAFC;--pp-border:#D8E2E0;--pp-shadow:0 10px 28px rgba(15,23,42,.055)}
+.block-container{max-width:1180px;padding-top:1.1rem;padding-bottom:5rem}
+[data-testid="stAppViewContainer"]{background:radial-gradient(circle at 82% 0%,rgba(15,118,110,.07),transparent 30rem),#F8FAFC}
+[data-testid="stHeader"]{background:rgba(248,250,252,.86);backdrop-filter:blur(14px)}
 h1,h2,h3{color:var(--pp-ink);letter-spacing:-.035em}
 .stCaption,[data-testid="stCaptionContainer"]{color:var(--pp-muted)}
-.pp-brand{display:flex;align-items:center;gap:12px;margin:.25rem 0 1.35rem}
-.pp-logo{width:42px;height:42px;border-radius:13px;background:linear-gradient(135deg,#12304A,#0F766E);display:flex;align-items:center;justify-content:center;color:#fff;font-size:21px;font-weight:800;box-shadow:0 8px 20px rgba(15,118,110,.18)}
-.pp-brand-name{font-size:1.05rem;font-weight:800;letter-spacing:-.02em;color:#0B1726}
-.pp-brand-tag{font-size:.76rem;color:#64748B}
-.pp-hero{padding:1.5rem 1.65rem 1.6rem;margin-bottom:1.25rem;border:1px solid rgba(226,232,240,.9);border-radius:24px;background:linear-gradient(135deg,rgba(255,255,255,.98),rgba(232,245,242,.72));box-shadow:var(--pp-shadow)}
-.pp-kicker{font-size:.72rem;font-weight:800;letter-spacing:.13em;color:#0F766E;margin-bottom:.55rem}
-.pp-hero-title{font-size:clamp(2rem,4vw,3.35rem);font-weight:850;line-height:1.02;letter-spacing:-.055em;color:#0B1726;max-width:850px}
-.pp-hero-sub{margin-top:.8rem;color:#64748B;font-size:1rem;line-height:1.65;max-width:760px}
-div[data-testid="stForm"],div[data-testid="stExpander"],div[data-testid="stMetric"]{border:1px solid rgba(226,232,240,.95);border-radius:18px;background:rgba(255,255,255,.94);box-shadow:var(--pp-shadow);overflow:hidden}
+label{color:var(--pp-text)!important;font-weight:650!important}
+.pp-brand{display:flex;align-items:center;gap:12px;margin:.15rem 0 1.25rem}
+.pp-logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#134E4A,#0F766E);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:800;box-shadow:0 7px 18px rgba(15,118,110,.15)}
+.pp-brand-name{font-size:1.06rem;font-weight:800;letter-spacing:-.02em;color:var(--pp-ink)}
+.pp-brand-tag{font-size:.75rem;color:var(--pp-muted)}
+.pp-hero{padding:1.7rem 1.8rem 1.8rem;margin-bottom:1.35rem;border:1px solid var(--pp-border);border-radius:22px;background:linear-gradient(135deg,#fff 0%,#F2F8F7 100%);box-shadow:var(--pp-shadow)}
+.pp-kicker{font-size:.7rem;font-weight:800;letter-spacing:.14em;color:var(--pp-accent);margin-bottom:.55rem}
+.pp-hero-title{font-size:clamp(2.05rem,4vw,3.35rem);font-weight:850;line-height:1.02;letter-spacing:-.055em;color:var(--pp-ink);max-width:850px}
+.pp-hero-sub{margin-top:.85rem;color:var(--pp-muted);font-size:1rem;line-height:1.65;max-width:760px}
+.pp-workflow{display:flex;gap:.55rem;flex-wrap:wrap;margin-top:1.15rem}
+.pp-step{padding:.42rem .72rem;border:1px solid var(--pp-border);border-radius:999px;background:#fff;color:var(--pp-text);font-size:.76rem;font-weight:700}
+.pp-step-active{background:var(--pp-soft);border-color:#B9D8D3;color:var(--pp-navy)}
+.pp-section-kicker{font-size:.68rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--pp-accent);margin:1.4rem 0 .3rem}
+div[data-testid="stForm"],div[data-testid="stExpander"],div[data-testid="stMetric"]{border:1px solid var(--pp-border);border-radius:16px;background:#fff;box-shadow:var(--pp-shadow);overflow:hidden}
 div[data-testid="stForm"]{padding:1.25rem 1.25rem .35rem}
 div[data-testid="stExpander"] summary{font-weight:650}
-[data-testid="stMetric"]{padding:1rem 1.1rem}
-[data-testid="stMetricLabel"]{color:var(--pp-muted);font-size:.78rem;font-weight:650}
+[data-testid="stMetric"]{padding:1rem 1.05rem}
+[data-testid="stMetricLabel"]{color:var(--pp-muted);font-size:.76rem;font-weight:650}
 [data-testid="stMetricValue"]{color:var(--pp-ink);font-weight:780;letter-spacing:-.03em}
-.stButton>button,.stFormSubmitButton>button{border:1px solid rgba(15,118,110,.12);border-radius:12px;min-height:2.75rem;font-weight:700;background:linear-gradient(135deg,#12304A,#0F766E);color:#fff;box-shadow:0 7px 18px rgba(15,118,110,.16);transition:transform .16s ease,box-shadow .16s ease}
-.stButton>button:hover,.stFormSubmitButton>button:hover{transform:translateY(-1px);box-shadow:0 11px 24px rgba(15,118,110,.22)}
+.stButton>button,.stFormSubmitButton>button{border:1px solid rgba(15,118,110,.12);border-radius:11px;min-height:2.75rem;font-weight:700;background:#0F766E;color:#fff;box-shadow:0 6px 16px rgba(15,118,110,.13);transition:transform .16s ease,box-shadow .16s ease}
+.stButton>button:hover,.stFormSubmitButton>button:hover{transform:translateY(-1px);box-shadow:0 9px 20px rgba(15,118,110,.18)}
 button[kind="secondary"]{background:#fff!important;color:var(--pp-navy)!important;border:1px solid var(--pp-border)!important;box-shadow:none!important}
-div[data-baseweb="input"]>div,div[data-baseweb="textarea"]>div,div[data-baseweb="select"]>div{border-radius:12px;border-color:var(--pp-border);background:#fff}
-div[data-baseweb="input"]>div:focus-within,div[data-baseweb="textarea"]>div:focus-within,div[data-baseweb="select"]>div:focus-within{border-color:rgba(15,118,110,.65);box-shadow:0 0 0 3px rgba(15,118,110,.09)}
-[data-testid="stSidebar"]{background:linear-gradient(180deg,#F8FAFC 0%,#F1F5F9 100%);border-right:1px solid var(--pp-border)}
+div[data-baseweb="input"]>div,div[data-baseweb="textarea"]>div,div[data-baseweb="select"]>div{border-radius:10px;border-color:var(--pp-border);background:#fff}
+div[data-baseweb="input"]>div:focus-within,div[data-baseweb="textarea"]>div:focus-within,div[data-baseweb="select"]>div:focus-within{border-color:rgba(15,118,110,.72);box-shadow:0 0 0 3px rgba(15,118,110,.09)}
+[data-testid="stSidebar"]{background:#F3F8F7;border-right:1px solid var(--pp-border)}
 [data-testid="stSidebar"] .stButton>button{width:100%}
-hr{border-color:var(--pp-border);margin:1.5rem 0}
-[data-testid="stDataFrame"]{border-radius:14px;overflow:hidden;border:1px solid var(--pp-border)}
-[data-testid="stAlert"]{border-radius:14px}
-div[data-testid="stFileUploader"]{border-radius:14px}
-@media(max-width:700px){.block-container{padding-left:.8rem;padding-right:.8rem}.pp-hero{padding:1.2rem}.pp-hero-title{font-size:2rem}}
+hr{border-color:var(--pp-border);margin:1.6rem 0}
+[data-testid="stDataFrame"]{border-radius:12px;overflow:hidden;border:1px solid var(--pp-border)}
+[data-testid="stAlert"]{border-radius:12px}
+div[data-testid="stFileUploader"]{border-radius:12px}
+@media(max-width:700px){.block-container{padding-left:.8rem;padding-right:.8rem}.pp-hero{padding:1.25rem}.pp-hero-title{font-size:2rem}.pp-workflow{gap:.4rem}.pp-step{font-size:.7rem;padding:.38rem .6rem}.stButton>button,.stFormSubmitButton>button{width:100%}}
+@media(prefers-reduced-motion:reduce){.stButton>button,.stFormSubmitButton>button{transition:none}}
 </style>
 """, unsafe_allow_html=True)
     st.markdown("""<div class="pp-brand"><div class="pp-logo">P</div><div><div class="pp-brand-name">ProductPulse AI</div><div class="pp-brand-tag">Research → Product → Publish</div></div></div>""", unsafe_allow_html=True)
-    st.markdown("""<div class="pp-hero"><div class="pp-kicker">DIGITAL PRODUCT WORKSPACE</div><div class="pp-hero-title">Turn ideas into polished digital products</div><div class="pp-hero-sub">Research opportunities, shape the product, generate content, refine visuals, verify the result, and export with confidence.</div></div>""", unsafe_allow_html=True)
+    st.markdown("""<div class="pp-hero"><div class="pp-kicker">DIGITAL PRODUCT WORKSPACE</div><div class="pp-hero-title">Turn ideas into polished digital products</div><div class="pp-hero-sub">Research opportunities, shape the product, generate content, refine visuals, verify the result, and export with confidence.</div><div class="pp-workflow"><span class="pp-step pp-step-active">01 Research</span><span class="pp-step">02 Product</span><span class="pp-step">03 Content</span><span class="pp-step">04 Visuals</span><span class="pp-step">05 Verify</span><span class="pp-step">06 Export</span></div></div>""", unsafe_allow_html=True)
     try:
         store, product_store = _get_stores()
     except (StorageConfigurationError, StorageConnectionError) as exc:
@@ -366,6 +372,7 @@ div[data-testid="stFileUploader"]{border-radius:14px}
             st.error("Private storage is temporarily unavailable, so this product page could not be loaded. Nothing was switched to local storage; please try again shortly.")
         return
 
+    st.markdown("""<div class="pp-section-kicker">Creator mode</div>""", unsafe_allow_html=True)
     st.subheader("Create a product from your own topic")
     st.caption("Give ProductPulse AI your topic and description, then optionally add notes or source material. It will use those inputs as the product brief; this mode does not pretend they are market research.")
     with st.form("manual_product_form"):
@@ -389,6 +396,7 @@ div[data-testid="stFileUploader"]{border-radius:14px}
             st.rerun()
 
     st.divider()
+    st.markdown("""<div class="pp-section-kicker">Research mode</div>""", unsafe_allow_html=True)
     st.subheader("Or run a public research scan")
     st.text_input("Niche, topic, or problem statement", placeholder="e.g., onboarding systems for independent consultants", key="topic_input")
     st.caption("Quick examples")
