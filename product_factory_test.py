@@ -301,5 +301,27 @@ class ProductFactoryTests(unittest.TestCase):
             self.assertIn("content_payload", columns)
 
 
+    def test_competition_gap_is_neutral_without_gap_evidence(self):
+        from app.product.architect import architect_opportunities
+
+        problem = ProblemSignal(
+            problem="People struggle to organize client onboarding steps.",
+            customer_language=["People struggle to organize client onboarding steps."],
+            evidence_items=1,
+            urgency=0.1,
+        )
+        opportunities = architect_opportunities(
+            "Client onboarding",
+            [problem],
+            {"score": 0.0},
+            {"status": "insufficient_evidence", "gaps": [], "score": 0.0},
+            evidence_count=1,
+            marketplace_gaps=[],
+        )
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].competition_gap, 0.0)
+        self.assertEqual(opportunities[0].competition_gap_status, "insufficient_evidence")
+        self.assertIn("no gap", opportunities[0].risks[0].lower() + " " + " ".join(opportunities[0].next_steps).lower() or "no gap")
+
 if __name__ == "__main__":
     unittest.main()
