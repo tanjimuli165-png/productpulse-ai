@@ -737,6 +737,7 @@ def qa_snapshot_fingerprint(
 
 def final_verification(blueprint, content, inputs, *, design, visual_assets=None, preview_html=None, pdf_bytes=None) -> dict[str, Any]:
     """Final pre-publish gate combining saved-content QA with PDF-level structural checks."""
+    verified_pdf_sha256 = None
     result = run_product_qa(
         blueprint, content, inputs, design=design,
         visual_assets=visual_assets or [], preview_html=preview_html,
@@ -775,6 +776,8 @@ def final_verification(blueprint, content, inputs, *, design, visual_assets=None
                 "Uses pypdf text extraction plus a conservative 5-gram similarity check. It does not replace human visual inspection of typography, spacing, images, or print rendering.",
                 pdf_issues,
             ))
+            if not pdf_issues:
+                verified_pdf_sha256 = hashlib.sha256(pdf_bytes).hexdigest()
         except Exception as exc:
             checks.append(_check(
                 "Final PDF structural verification", "Final PDF", "NOT RUN",
@@ -799,6 +802,7 @@ def final_verification(blueprint, content, inputs, *, design, visual_assets=None
     result["checks"] = checks
     result["status"] = "PASS" if not final_issues else "NEEDS REVISION"
     result["final_verification"] = True
+    result["verified_pdf_sha256"] = verified_pdf_sha256
     result["limitations"] = list(result.get("limitations", [])) + [
         "Final verification is a deterministic pre-publish gate; it cannot judge taste, factual truth, commercial demand, or whether a visual is aesthetically ideal.",
         "Always open the final PDF once on the device where it will be delivered, especially when custom fonts, unusual symbols, or user-uploaded images are used.",
