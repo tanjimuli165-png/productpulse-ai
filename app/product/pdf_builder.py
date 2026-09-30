@@ -794,9 +794,10 @@ def export_saved_product_pdf(product_id: str, user_id: str, store: ProductStore)
             evidence=inputs.evidence,
             visual_assets=visual_assets,
         )
-        current_fingerprint = qa_snapshot_fingerprint(
+current_fingerprint = qa_snapshot_fingerprint(
             blueprint,
             content,
+            inputs=inputs,
             design={"template_id": design.template_id, "page_size": design.page_size},
             visual_assets=visual_assets,
             preview_html=preview_html,
